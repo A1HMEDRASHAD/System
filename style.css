@@ -1,5 +1,6 @@
 /* ==========================================================================
-   Safaqat System ERP - Institutional Monochrome Edition (Light & Dark 100%)
+   Safaqat System ERP & POS - Institutional Monochrome Master Edition v3.0
+   Complete Unabridged Stylesheet | Responsive (Mobile / Tablet / Desktop)
    Palette: Pure Monochrome (Black/White/Zinc) + Emerald (+) & Crimson (-)
    ========================================================================== */
 
@@ -9,7 +10,7 @@
   --bg-surface: #ffffff;
   --bg-subtle: #f1f3f5;
   --bg-elevated: #e9ecef;
-  --bg-glass: rgba(255, 255, 255, 0.92);
+  --bg-glass: rgba(255, 255, 255, 0.94);
   --bg-invert: #09090b;
 
   --text-main: #09090b;
@@ -39,10 +40,10 @@
 
   --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.04);
   --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.11);
   --shadow-dock: 0 16px 36px rgba(0, 0, 0, 0.28);
 
-  --transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* الوضع الليلي (Monochrome Dark - انعكاس كامل 100%) */
@@ -51,7 +52,7 @@
   --bg-surface: #121215;
   --bg-subtle: #18181b;
   --bg-elevated: #27272a;
-  --bg-glass: rgba(18, 18, 21, 0.92);
+  --bg-glass: rgba(18, 18, 21, 0.94);
   --bg-invert: #fafafa;
 
   --text-main: #fafafa;
@@ -95,39 +96,96 @@ html, body {
 }
 
 /* ==========================================================================
-   1. الهوية النصية الخالصة (Pure Typography Branding - No Logos)
+   1. شاشة التحميل الصامتة (Boot Screen - تمنع وميض تسجيل الدخول نهائياً)
+   ========================================================================== */
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: var(--bg-app);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  transition: opacity 0.22s ease;
+}
+
+.boot-mark {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 30px;
+  border: 2px solid var(--text-main);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.boot-mark .ar {
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--text-main);
+}
+
+.boot-mark .en {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.boot-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2.5px solid var(--border-strong);
+  border-top-color: var(--text-main);
+  border-radius: 50%;
+  animation: safaqatSpin 0.65s linear infinite;
+}
+
+@keyframes safaqatSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   2. الهوية النصية الخالصة وشاشة تسجيل الدخول
    ========================================================================== */
 .brand-typo {
   display: flex;
   flex-direction: column;
-  line-height: 1.1;
+  line-height: 1.15;
   user-select: none;
   cursor: pointer;
+  min-width: 0;
 }
 
 .brand-typo-ar {
-  font-size: 19px;
-  font-weight: 800;
+  font-size: 18px;
+  font-weight: 900;
   letter-spacing: -0.3px;
   color: var(--text-main);
+  white-space: nowrap;
 }
 
 .brand-typo-en {
   font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 1.8px;
+  letter-spacing: 1.2px;
   text-transform: uppercase;
   color: var(--text-muted);
-  font-family: monospace, sans-serif;
+  font-family: 'Tajawal', monospace, sans-serif;
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px;
 }
 
-/* ==========================================================================
-   2. شاشة تسجيل الدخول المؤسسية (Monochrome Auth Gate)
-   ========================================================================== */
 .auth-screen {
   min-height: 100vh;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   padding: 20px;
@@ -190,12 +248,12 @@ html, body {
 }
 
 .btn-google-login:hover {
-  opacity: 0.9;
+  opacity: 0.92;
   transform: translateY(-2px);
 }
 
 /* ==========================================================================
-   3. الهيدر العلوي والقائمة الجانبية المنزلقة (Topbar & Right Drawer ☰)
+   3. الهيدر العلوي النظيف (غير المزدحم) + الشريط السريع + القائمة الجانبية
    ========================================================================== */
 .top-header {
   position: sticky;
@@ -205,7 +263,7 @@ html, body {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
-  padding: 11px 16px;
+  padding: 10px 14px;
 }
 
 .header-inner {
@@ -214,18 +272,18 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
 .header-right, .header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .icon-btn {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   background: var(--bg-surface);
@@ -233,7 +291,7 @@ html, body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 19px;
   cursor: pointer;
   transition: var(--transition);
   position: relative;
@@ -252,15 +310,93 @@ html, body {
 
 .notif-dot {
   position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 8px;
-  height: 8px;
+  top: 6px;
+  right: 6px;
+  width: 8.5px;
+  height: 8.5px;
   background: var(--neg);
   border-radius: 50%;
+  border: 1.5px solid var(--bg-surface);
 }
 
-/* القائمة الجانبية المنزلقة (تعمل في الجوال والكمبيوتر معاً) */
+/* زر الصورة الشخصية في الهيدر */
+.header-avatar-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-main);
+  background: var(--bg-invert);
+  color: var(--text-invert);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.header-avatar-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.header-avatar-btn:hover {
+  transform: scale(1.05);
+}
+
+/* شريط الأدوات السريع أسفل بطاقة الترحيب (بديل زحام الهيدر) */
+.quick-tools-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 14px;
+  scrollbar-width: none;
+}
+
+.quick-tools-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-tool-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--transition);
+  box-shadow: var(--shadow-xs);
+}
+
+.quick-tool-pill i {
+  font-size: 16px;
+}
+
+.quick-tool-pill:hover {
+  border-color: var(--text-main);
+  background: var(--bg-subtle);
+}
+
+.quick-tool-pill.pos-highlight {
+  background: var(--bg-invert);
+  color: var(--text-invert);
+  border-color: var(--bg-invert);
+}
+
+/* القائمة الجانبية المنزلقة */
 .drawer-backdrop {
   position: fixed;
   inset: 0;
@@ -282,7 +418,7 @@ html, body {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 310px;
+  width: 315px;
   max-width: 86vw;
   background: var(--bg-surface);
   border-left: 1px solid var(--border-strong);
@@ -314,9 +450,10 @@ html, body {
   min-width: 0;
 }
 
-.user-initials-circle {
-  width: 42px;
-  height: 42px;
+.user-initials-circle,
+.avatar-circle-img {
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--bg-invert);
   color: var(--text-invert);
@@ -326,6 +463,15 @@ html, body {
   font-weight: 800;
   font-size: 16px;
   flex-shrink: 0;
+  object-fit: cover;
+  border: 1.5px solid var(--border-strong);
+  overflow: hidden;
+}
+
+.user-initials-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .drawer-nav {
@@ -398,7 +544,102 @@ html, body {
 }
 
 /* ==========================================================================
-   4. الحاوية الرئيسية، البحث الذكي، وكبسولات الفلترة (Hujariya Layout)
+   4. محرك البحث الذكي البديل للقوائم المنسدلة (Smart Auto-Complete Picker)
+   ========================================================================== */
+.smart-picker-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.smart-picker-input-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.smart-picker-input-box i.search-ico {
+  position: absolute;
+  right: 12px;
+  font-size: 16px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.smart-picker-input-box .input-ctrl {
+  padding-right: 36px;
+  padding-left: 34px;
+}
+
+.smart-picker-clear {
+  position: absolute;
+  left: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-elevated);
+  color: var(--text-main);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.smart-picker-wrap.has-val .smart-picker-clear {
+  display: inline-flex;
+}
+
+.smart-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 230px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--text-main);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 650;
+  display: none;
+}
+
+.smart-picker-dropdown.open {
+  display: block;
+}
+
+.smart-picker-item {
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  transition: background 0.15s ease;
+}
+
+.smart-picker-item:last-child {
+  border-bottom: none;
+}
+
+.smart-picker-item:hover,
+.smart-picker-item.selected {
+  background: var(--bg-subtle);
+  font-weight: 800;
+}
+
+.smart-picker-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   5. الحاوية الرئيسية، شريط البحث العام، وكبسولات الفلترة
    ========================================================================== */
 .main-container {
   max-width: 1220px;
@@ -411,10 +652,12 @@ html, body {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .search-field {
   flex: 1;
+  min-width: 220px;
   position: relative;
 }
 
@@ -444,7 +687,6 @@ html, body {
   border-color: var(--text-main);
 }
 
-/* كبسولات التصفية الأفقية */
 .pills-scroll {
   display: flex;
   align-items: center;
@@ -494,7 +736,6 @@ html, body {
   color: var(--text-invert);
 }
 
-/* شريط فلترة التواريخ المتقدم (Date-Range Filter Bar) */
 .date-filter-bar {
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -526,7 +767,7 @@ html, body {
 }
 
 /* ==========================================================================
-   5. المحافظ المالية والإحصائيات (Wallets & Positive/Negative Numbers)
+   6. المحافظ المالية والإحصائيات الموحدة في كل أقسام النظام (KPIs & Wallets)
    ========================================================================== */
 .money-pos { color: var(--pos) !important; font-weight: 800; }
 .money-neg { color: var(--neg) !important; font-weight: 800; }
@@ -534,13 +775,20 @@ html, body {
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 16px;
 }
 
 @media (min-width: 768px) {
   .metrics-grid {
     grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 380px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -548,7 +796,7 @@ html, body {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 15px;
+  padding: 14px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -564,8 +812,8 @@ html, body {
 }
 
 .metric-val {
-  font-size: 19px;
-  font-weight: 800;
+  font-size: 18px;
+  font-weight: 900;
   color: var(--text-main);
   line-height: 1.2;
 }
@@ -594,7 +842,7 @@ html, body {
 .metric-icon.neg { background: var(--neg-bg); color: var(--neg); border-color: var(--neg-border); }
 
 /* ==========================================================================
-   6. شبكة الكتب العمودية (2-Column Vertical Book Cards)
+   7. شبكة الكتب، شارة المعرض الصريحة، والأغلفة الثلاثة (Books & Covers)
    ========================================================================== */
 .books-grid {
   display: grid;
@@ -604,8 +852,14 @@ html, body {
 
 @media (min-width: 768px) {
   .books-grid {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(225px, 1fr));
     gap: 16px;
+  }
+}
+
+@media (max-width: 360px) {
+  .books-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -711,6 +965,20 @@ html, body {
   cursor: pointer;
 }
 
+/* شارة المعرض الصريحة على بطاقة الكتاب (للإدارة وللكاتب) */
+.book-exh-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-invert);
+  color: var(--text-invert);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
 .book-mini-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -727,8 +995,37 @@ html, body {
   color: var(--text-muted);
 }
 
+/* شبكة استعراض الأغلفة الثلاثة وصور المعارض */
+.covers-showcase-grid,
+.exhibition-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.cover-slot-card {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cover-slot-card img {
+  width: 100%;
+  height: 170px;
+  object-fit: contain;
+  background: var(--bg-surface);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+}
+
 /* ==========================================================================
-   7. البطاقات العامة، الصفوف، وصفحات الإدخال الكاملة
+   8. البطاقات العامة، اللوحات، النماذج، والصفوف التفاعلية (Panels & Forms)
    ========================================================================== */
 .cards-grid {
   display: grid;
@@ -786,11 +1083,31 @@ html, body {
   gap: 7px;
 }
 
+.dup-warning-box {
+  display: none;
+  background: var(--neg-bg);
+  border: 1.5px solid var(--neg-border);
+  color: var(--neg);
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  font-weight: 800;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dup-warning-box.show {
+  display: flex;
+}
+
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 
-@media (max-width: 680px) {
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+@media (max-width: 720px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
 }
 
 .field { margin-bottom: 12px; }
@@ -818,7 +1135,6 @@ html, body {
   border-color: var(--text-main);
 }
 
-/* قائمة الاختيار المتعدد للكتب (في الحملات الإعلانية والمعارض) */
 .multi-select-list {
   max-height: 210px;
   overflow-y: auto;
@@ -861,10 +1177,20 @@ html, body {
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 8px;
+  transition: var(--transition);
+}
+
+.list-row.clickable {
+  cursor: pointer;
+}
+
+.list-row.clickable:hover {
+  border-color: var(--text-main);
+  background: var(--bg-subtle);
 }
 
 /* ==========================================================================
-   8. الأزرار والشارات المؤسسية (Monochrome + Pos/Neg)
+   9. الأزرار، قفل النقر المزدوج (Anti-Double-Click)، والشارات
    ========================================================================== */
 .btn {
   display: inline-flex;
@@ -881,6 +1207,13 @@ html, body {
   transition: var(--transition);
   text-decoration: none;
   white-space: nowrap;
+}
+
+.btn[disabled],
+.btn.is-busy {
+  opacity: 0.55 !important;
+  pointer-events: none !important;
+  cursor: not-allowed !important;
 }
 
 .btn-primary {
@@ -927,7 +1260,228 @@ html, body {
 .badge.invert { background: var(--bg-invert); color: var(--text-invert); }
 
 /* ==========================================================================
-   9. الشريط السفلي العائم بـ 5 أزرار (Floating Bottom Dock)
+   10. شاشة الكاشير المستقلة (POS Cashier Screen) + سلة الهدايا والبيع
+   ========================================================================== */
+.pos-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .pos-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pos-catalog-pane,
+.pos-cart-pane {
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.pos-books-list {
+  max-height: 430px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pos-book-row {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  transition: var(--transition);
+}
+
+.pos-book-row:hover {
+  border-color: var(--text-main);
+}
+
+.pos-cart-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.pos-cart-item {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pos-cart-item.is-free-gift {
+  background: var(--pos-bg);
+  border-color: var(--pos-border);
+}
+
+.pos-summary-box {
+  background: var(--bg-subtle);
+  border-top: 2px dashed var(--border-strong);
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  margin-top: 10px;
+}
+
+/* ==========================================================================
+   11. تصميم الفاتورة التجارية الرسمية (دار صفقات كتابية للنشر والتوزيع)
+   ========================================================================== */
+.commercial-invoice-card {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  background: #ffffff;
+  color: #09090b;
+  border: 2px solid #09090b;
+  border-radius: 14px;
+  padding: 20px 18px;
+  font-family: 'Tajawal', sans-serif;
+  box-shadow: var(--shadow-md);
+}
+
+.inv-brand-header {
+  text-align: center;
+  border-bottom: 2px dashed #09090b;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.inv-brand-header h2 {
+  font-size: 19px;
+  font-weight: 900;
+  color: #09090b;
+  margin-bottom: 2px;
+}
+
+.inv-brand-header p {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #3f3f46;
+}
+
+.inv-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  background: #f4f4f5;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.inv-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-bottom: 12px;
+}
+
+.inv-items-table th {
+  border-bottom: 1.5px solid #09090b;
+  padding: 6px 4px;
+  text-align: right;
+  font-weight: 900;
+}
+
+.inv-items-table td {
+  border-bottom: 1px solid #e4e4e7;
+  padding: 7px 4px;
+}
+
+.inv-totals-box {
+  border-top: 2px dashed #09090b;
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13.5px;
+}
+
+.inv-qr-footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e4e4e7;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.inv-qr-box {
+  width: 78px;
+  height: 78px;
+  border: 1.5px solid #09090b;
+  border-radius: 8px;
+  padding: 4px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   12. الماسح الليزري بالكاميرا للتحقق من الفواتير (In-App Laser Scanner)
+   ========================================================================== */
+.scanner-viewport {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto 14px;
+  background: #000000;
+  border: 2px solid var(--text-main);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.scanner-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scanner-laser-line {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  height: 3px;
+  background: var(--pos);
+  box-shadow: 0 0 12px 2px var(--pos);
+  border-radius: 99px;
+  animation: laserSweep 2.1s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes laserSweep {
+  0% { top: 8%; opacity: 0.3; }
+  50% { top: 90%; opacity: 1; }
+  100% { top: 8%; opacity: 0.3; }
+}
+
+/* ==========================================================================
+   13. الشريط السفلي العائم بـ 5 أزرار (Floating Bottom Dock)
    ========================================================================== */
 .floating-dock-wrap {
   position: fixed;
@@ -1005,7 +1559,6 @@ html, body {
   transform: scale(1.06);
 }
 
-/* نافذة الإضافة السريعة (+) */
 .sheet-overlay {
   position: fixed;
   inset: 0;
@@ -1041,11 +1594,11 @@ html, body {
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 13px 10px;
+  padding: 12px 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 800;
@@ -1058,7 +1611,7 @@ html, body {
 .quick-tile:hover { border-color: var(--text-main); }
 
 /* ==========================================================================
-   10. الآلة الحاسبة الذكية المدمجة وحوارات التأكيد
+   14. النوافذ المنبثقة، الآلة الحاسبة الذكية، والسجل الرقابي التفصيلي
    ========================================================================== */
 .modal-overlay {
   position: fixed;
@@ -1069,14 +1622,16 @@ html, body {
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 14px;
 }
 
 .modal-overlay.show { display: flex; }
 
 .modal-card {
   width: 100%;
-  max-width: 420px;
+  max-width: 470px;
+  max-height: 92vh;
+  overflow-y: auto;
   background: var(--bg-surface);
   border: 1.5px solid var(--border-strong);
   border-radius: var(--radius-xl);
@@ -1084,15 +1639,75 @@ html, body {
   box-shadow: var(--shadow-dock);
 }
 
-.calc-keypad {
+.modal-card.wide {
+  max-width: 620px;
+}
+
+.calc-guide-details {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.calc-guide-details summary {
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+}
+
+.calc-guide-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.calc-guide-body {
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.calc-results-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-top: 10px;
 }
 
+.calc-res-box {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 9px 10px;
+}
+
+.calc-res-box span {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.calc-res-box strong {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.calc-keypad {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+  margin-top: 8px;
+}
+
 .calc-key {
-  padding: 12px;
+  padding: 11px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   background: var(--bg-subtle);
@@ -1108,12 +1723,22 @@ html, body {
   color: var(--text-invert);
 }
 
+.audit-diff-box {
+  background: var(--bg-subtle);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.75;
+}
+
 .toast-stack {
   position: fixed;
   top: 72px;
   left: 16px;
   right: 16px;
-  z-index: 2000;
+  z-index: 9800;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1134,16 +1759,45 @@ html, body {
   box-shadow: var(--shadow-md);
 }
 
-/* تنسيق الطباعة الرسمي لكشوف الحسابات والتقارير (Print / PDF Ready) */
+/* ==========================================================================
+   15. الترويسة والختم الرسمي للطباعة وكشوف الحسابات المرنة (Print & PDF)
+   ========================================================================== */
+.print-official-header,
+.print-official-footer {
+  display: none;
+}
+
 @media print {
-  .top-header, .floating-dock-wrap, .side-drawer, .drawer-backdrop, .btn, .icon-btn, .search-bar-wrap, .pills-scroll {
+  .top-header, .floating-dock-wrap, .side-drawer, .drawer-backdrop, .btn, .icon-btn,
+  .search-bar-wrap, .pills-scroll, .quick-tools-bar, .date-filter-bar, .no-print,
+  .modal-overlay:not(.print-active-modal) {
     display: none !important;
   }
+
   body, .main-container, .page-panel, .surface-card {
     background: #ffffff !important;
     color: #000000 !important;
     box-shadow: none !important;
     padding: 0 !important;
     margin: 0 !important;
+  }
+
+  .print-official-header {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2.5px solid #000000;
+    padding-bottom: 14px;
+    margin-bottom: 20px;
+  }
+
+  .print-official-footer {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1.5px solid #000000;
+    padding-top: 12px;
+    margin-top: 28px;
+    font-size: 12px;
   }
 }
