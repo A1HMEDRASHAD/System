@@ -1,4 +1,4 @@
-/* ==========================================================================
+ع/* ==========================================================================
    Safaqat System ERP & POS - Institutional Master Engine v3.1 (Part 1 of 3)
    Fail-Safe Mobile Boot Edition | دار صفقات كتابية للنشر والتوزيع
    ========================================================================== */
@@ -2931,4 +2931,2381 @@ function renderGuideView() {
       </div>
     </div>
   `;
+}
+// ==========================================================================
+// 20. شاشة الكاشير المعزولة ونقاط البيع (POS Cashier & Free Gift Cart)
+// ==========================================================================
+function renderPosView() {
+  const catalogEl = $("pos-books-catalog-list");
+  const countEl = $("pos-catalog-count");
+  if (!catalogEl) return;
+
+  const q = ($("pos-book-search-input")?.value || "").trim().toLowerCase();
+  const activeBooks = state.books.filter((b) => b.contractStatus !== "terminated");
+  if (countEl) countEl.textContent = `${fmtNum(activeBooks.length)} كتاب متاح`;
+
+  const filtered = activeBooks.filter(
+    (b) =>
+      !q ||
+      (b.title || "").toLowerCase().includes(q) ||
+      (b.authorName || "").toLowerCase().includes(q) ||
+      (b.isbn || "").toLowerCase().includes(q)
+  );
+
+  catalogEl.innerHTML = filtered.length
+    ? filtered
+        .slice(0, 40)
+        .map((b) => {
+          const st = Number(b.stock) || 0;
+          return `
+            <div class="pos-book-row">
+              <div>
+                <strong style="font-size:14px;">${esc(b.title)}</strong>
+                <div style="font-size:12px;color:var(--text-secondary);">
+                  المؤلف: ${esc(b.authorName \vert{}\vert{} "—")} • السعر: <strong>${fmtMoney(b.price)}</strong> • المخزون: <span class="${st <= 5 ? "money-neg" : "money-pos"}">${fmtNum(st)}</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button type="button" class="btn btn-primary js-pos-add-sale" data-id="${esc(b.id)}" style="padding:6px 12px;font-size:12px;">
+                  <i class="ri-add-line"></i><span>بيع</span>
+                </button>
+                <button type="button" class="btn btn-outline js-pos-add-gift" data-id="${esc(b.id)}" style="padding:6px 10px;font-size:12px;color:var(--pos);border-color:var(--pos-border);" title="إضافة كنسخة هدية مجانية">
+                  <i class="ri-gift-2-line"></i><span>هدية مجانية</span>
+                </button>
+              </div>
+            </div>
+          `;
+        })
+        .join("")
+    : `<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;">لا توجد كتب مطابقة للبحث.</div>`;
+
+  catalogEl.querySelectorAll(".js-pos-add-sale").forEach((btn) => {
+    btn.addEventListener("click", () => addBookToPosCart(btn.dataset.id, false));
+  });
+  catalogEl.querySelectorAll(".js-pos-add-gift").forEach((btn) => {
+    btn.addEventListener("click", () => addBookToPosCart(btn.dataset.id, true));
+  });
+
+  renderPosCart();
+  renderPosRecentInvoices();
+}
+
+function addBookToPosCart(bookId, isFreeGift = false) {
+  const book = state.books.find((b) => b.id === bookId);
+  if (!book) return;
+
+  const existing = state.posCart.find((item) => item.bookId === bookId && item.isFreebie === isFreeGift);
+  if (existing) {
+    existing.qty += 1;
+  } else {
+    state.posCart.push({
+      cartItemId: `${bookId}_${isFreeGift ? "gift" : "sale"}_${Date.now()}`,
+      bookId: book.id,
+      title: book.title,
+      authorId: book.authorId || "",
+      authorName: book.authorName || "",
+      unitPrice: isFreeGift ? 0 : Number(book.price) || 0,
+      digitalUnitPrice: isFreeGift ? 0 : Number(book.digitalPrice || book.price) || 0,
+      royaltyRate: isFreeGift ? 0 : Number(book.royaltyRate) || 0,
+      qty: 1,
+      isFreebie: isFreeGift
+    });
+  }
+  renderPosCart();
+}
+
+function renderPosCart() {
+  const listEl = $("pos-cart-items-list");
+  const countsEl = $("pos-sum-counts");
+  const totalEl = $("pos-sum-total");
+  if (!listEl) return;
+
+  const format = $("pos-copy-format")?.value || "paper";
+  const discPct = Math.min(90, Math.max(0, Number($("pos-discount-input")?.value) || 0));
+
+  if (!state.posCart.length) {
+    listEl.innerHTML = `<div style="text-align:center;padding:26px 10px;color:var(--text-muted);font-size:13px;border:1px dashed var(--border-strong);border-radius:10px;">السلة فارغة حالياً. اضغط (بيع) أو (هدية مجانية) من قائمة الكتب.</div>`;
+    if (countsEl) countsEl.textContent = "0 مباعة • 0 هدية مجانية";
+    if (totalEl) totalEl.textContent = "0 ج.م";
+    return;
+  }
+
+  let soldCount = 0;
+  let giftCount = 0;
+  let grossTotal = 0;
+
+  listEl.innerHTML = state.posCart
+    .map((item, idx) => {
+      const priceToUse = item.isFreebie ? 0 : format === "digital" ? item.digitalUnitPrice : item.unitPrice;
+      const subTotal = priceToUse * item.qty;
+      if (item.isFreebie) giftCount += item.qty;
+      else {
+        soldCount += item.qty;
+        grossTotal += subTotal;
+      }
+
+      return `
+        <div class="pos-cart-item ${item.isFreebie ? "is-free-gift" : ""}">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="badge ${item.isFreebie ? "pos" : "invert"}">${item.isFreebie ? "هدية مجانية (0 ج.م)" : "مبيعات"}</span>
+              <strong style="font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(item.title)}</strong>
+            </div>
+            <div style="font-size:11.5px;color:var(--text-secondary);margin-top:2px;">
+              ${item.isFreebie ? "تُخصم من المخزون بدون ربح مؤلف" : `سعر الوحدة: ${fmtMoney(priceToUse)} • الإجمالي: ${fmtMoney(subTotal)}`}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <button type="button" class="btn btn-outline js-cart-dec" data-idx="${idx}" style="padding:3px 8px;font-size:13px;">-</button>
+            <strong style="min-width:22px;text-align:center;font-size:13.5px;">${fmtNum(item.qty)}</strong>
+            <button type="button" class="btn btn-outline js-cart-inc" data-idx="${idx}" style="padding:3px 8px;font-size:13px;">+</button>
+            <button type="button" class="btn btn-neg js-cart-del" data-idx="${idx}" style="padding:4px 8px;font-size:12px;"><i class="ri-delete-bin-line"></i></button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  const netTotal = Math.round(grossTotal * (1 - discPct / 100) * 100) / 100;
+  if (countsEl) countsEl.textContent = `${fmtNum(soldCount)} مباعة • ${fmtNum(giftCount)} هدية مجانية`;
+  if (totalEl) totalEl.textContent = fmtMoney(netTotal);
+
+  listEl.querySelectorAll(".js-cart-dec").forEach((b) => {
+    b.addEventListener("click", () => {
+      const i = Number(b.dataset.idx);
+      if (state.posCart[i].qty > 1) state.posCart[i].qty--;
+      else state.posCart.splice(i, 1);
+      renderPosCart();
+    });
+  });
+  listEl.querySelectorAll(".js-cart-inc").forEach((b) => {
+    b.addEventListener("click", () => {
+      const i = Number(b.dataset.idx);
+      state.posCart[i].qty++;
+      renderPosCart();
+    });
+  });
+  listEl.querySelectorAll(".js-cart-del").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.posCart.splice(Number(b.dataset.idx), 1);
+      renderPosCart();
+    });
+  });
+}
+
+async function handlePosCheckout() {
+  if (!state.posCart.length) {
+    toast("السلة فارغة! أضف كتاباً واحداً على الأقل", "ri-error-warning-line");
+    return;
+  }
+
+  const copyFormat = $("pos-copy-format")?.value || "paper";
+  const whId = $("pos-warehouse-select")?.value || "main_warehouse";
+  const exhId = $("pos-exhibition-select")?.value || "";
+  const exhObj = state.exhibitions.find((x) => x.id === exhId);
+  const custName = ($("pos-cust-name")?.value || "").trim() || "عميلنا العزيز";
+  const custPhone = ($("pos-cust-phone")?.value || "").trim();
+  const payMethod = $("pos-payment-method")?.value || "نقدي (كاش)";
+  const discPct = Math.min(90, Math.max(0, Number($("pos-discount-input")?.value) || 0));
+
+  if (copyFormat === "paper") {
+    const reqByBook = {};
+    state.posCart.forEach((item) => {
+      reqByBook[item.bookId] = (reqByBook[item.bookId] || 0) + item.qty;
+    });
+    for (const [bId, totalNeeded] of Object.entries(reqByBook)) {
+      const book = state.books.find((b) => b.id === bId);
+      const currentStock = Number(book?.stock) || 0;
+      if (currentStock < totalNeeded) {
+        toast(`الرصيد الورقي غير كافٍ لكتاب «${book?.title || ""}» (المتوفر: ${currentStock} والمطلوب: ${totalNeeded})`, "ri-error-warning-line");
+        return;
+      }
+    }
+  }
+
+  const now = Date.now();
+  const randSuffix = Math.floor(1000 + Math.random() * 9000);
+  const invoiceCode = `#INV-${new Date(now).getFullYear()}-${randSuffix}`;
+  const channelLabel = exhObj ? `معرض: ${exhObj.name}` : "الكاشير / نقطة البيع المباشر";
+
+  const invoiceItemsForView = [];
+  let invoiceNetSum = 0;
+
+  for (const item of state.posCart) {
+    const book = state.books.find((b) => b.id === item.bookId);
+    if (!book) continue;
+
+    const baseUnit = item.isFreebie ? 0 : copyFormat === "digital" ? item.digitalUnitPrice : item.unitPrice;
+    const grossLine = baseUnit * item.qty;
+    const netLine = item.isFreebie ? 0 : Math.round(grossLine * (1 - discPct / 100) * 100) / 100;
+    const royaltyRate = item.isFreebie ? 0 : Number(book.royaltyRate) || 0;
+    const authorCut = item.isFreebie ? 0 : Math.round(netLine * (royaltyRate / 100) * 100) / 100;
+    const houseCut = item.isFreebie ? 0 : Math.round((netLine - authorCut) * 100) / 100;
+
+    invoiceNetSum += netLine;
+
+    await addDoc(collection(db, "sales"), {
+      invoiceCode,
+      bookId: book.id,
+      bookTitle: book.title,
+      authorId: book.authorId || "",
+      authorName: book.authorName || "",
+      qty: Number(item.qty),
+      unitPrice: baseUnit,
+      discountPct: item.isFreebie ? 100 : discPct,
+      totalAmount: netLine,
+      authorCut,
+      houseCut,
+      copyFormat: item.isFreebie ? "freebie" : copyFormat,
+      isFreebie: Boolean(item.isFreebie),
+      warehouseId: copyFormat === "paper" ? whId : "",
+      exhibitionId: exhId,
+      channel: item.isFreebie ? `${channelLabel} (هدية مجانية)` : channelLabel,
+      customerName: custName,
+      customerPhone: custPhone,
+      paymentMethod: payMethod,
+      soldBy: state.userEmail.toLowerCase(),
+      soldByName: state.displayName,
+      timestamp: now,
+      dateISO: new Date(now).toISOString()
+    });
+
+    const newStock = copyFormat === "paper" ? Math.max(0, (Number(book.stock) || 0) - item.qty) : Number(book.stock) || 0;
+    const newPaperSold = !item.isFreebie && copyFormat === "paper" ? (Number(book.copiesSold) || 0) + item.qty : Number(book.copiesSold) || 0;
+    const newDigSold = !item.isFreebie && copyFormat === "digital" ? (Number(book.digitalCopiesSold) || 0) + item.qty : Number(book.digitalCopiesSold) || 0;
+
+    await updateDoc(doc(db, "books", book.id), {
+      stock: newStock,
+      copiesSold: newPaperSold,
+      digitalCopiesSold: newDigSold
+    });
+
+    invoiceItemsForView.push({
+      title: item.isFreebie ? `${book.title} (هدية مجانية)` : book.title,
+      qty: item.qty,
+      unitPrice: baseUnit,
+      lineTotal: netLine,
+      isFreebie: item.isFreebie
+    });
+  }
+
+  await logActivity(
+    `إصدار فاتورة كاشير ${invoiceCode}`,
+    `العميل: ${custName} | الإجمالي: ${fmtMoney(invoiceNetSum)} \vert{} عدد العناصر: ${invoiceItemsForView.length}`,
+    { targetView: "view-pos", category: "كاشير ومبيعات" }
+  );
+
+  const invoicePayload = {
+    invoiceCode,
+    datetimeStr: fmtFullDateTime(now),
+    customerName: custName,
+    customerPhone: custPhone,
+    paymentMethod: payMethod,
+    channel: channelLabel,
+    discountPct: discPct,
+    netTotal: invoiceNetSum,
+    items: invoiceItemsForView
+  };
+
+  state.posCart = [];
+  if ($("pos-cust-name")) $("pos-cust-name").value = "";
+  if ($("pos-cust-phone")) $("pos-cust-phone").value = "";
+  if ($("pos-discount-input")) $("pos-discount-input").value = "0";
+  renderPosCart();
+
+  toast(`تم اعتماد البيع وإصدار الفاتورة ${invoiceCode} بنجاح`);
+  openCommercialInvoiceModal(invoicePayload);
+}
+
+function renderPosRecentInvoices() {
+  const box = $("pos-recent-invoices-list");
+  if (!box) return;
+
+  const groupedMap = new Map();
+  state.sales.slice(0, 60).forEach((s) => {
+    const code = s.invoiceCode || `#INV-${s.id.slice(0, 6).toUpperCase()}`;
+    if (!groupedMap.has(code)) {
+      groupedMap.set(code, {
+        invoiceCode: code,
+        datetimeStr: fmtFullDateTime(s.timestamp),
+        customerName: s.customerName || "عميلنا العزيز",
+        customerPhone: s.customerPhone || "",
+        paymentMethod: s.paymentMethod || "نقدي",
+        channel: s.channel || "المقر الرئيسي",
+        discountPct: s.discountPct || 0,
+        netTotal: 0,
+        items: []
+      });
+    }
+    const g = groupedMap.get(code);
+    g.netTotal += Number(s.totalAmount) || 0;
+    g.items.push({
+      title: s.isFreebie || s.copyFormat === "freebie" ? `${s.bookTitle} (هدية مجانية)` : s.bookTitle,
+      qty: s.qty,
+      unitPrice: s.unitPrice || 0,
+      lineTotal: s.totalAmount || 0,
+      isFreebie: Boolean(s.isFreebie || s.copyFormat === "freebie")
+    });
+  });
+
+  const recentArr = Array.from(groupedMap.values()).slice(0, 12);
+  box.innerHTML = recentArr.length
+    ? recentArr
+        .map(
+          (inv, idx) => `
+        <div class="list-row clickable js-pos-recent-inv" data-idx="${idx}">
+          <div>
+            <span class="badge pos" dir="ltr">${esc(inv.invoiceCode)}</span>
+            <strong style="margin-right:6px;">${esc(inv.customerName)}${inv.customerPhone ? `(<span dir="ltr">${esc(inv.customerPhone)}</span>)` : ""}</strong>
+            <div style="font-size:12px;color:var(--text-secondary);">
+              ${inv.items.map((i) => `${esc(i.title)} ×${i.qty}`).join(" ، ")} • <span dir="ltr">${esc(inv.datetimeStr)}</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <strong class="money-pos">${fmtMoney(inv.netTotal)}</strong>
+            <span class="btn btn-outline" style="padding:5px 10px;font-size:11.5px;"><i class="ri-whatsapp-line"></i> الفاتورة</span>
+          </div>
+        </div>
+      `
+        )
+        .join("")
+    : `<p style="text-align:center;color:var(--text-muted);font-size:13px;">لا توجد فواتير مصدرة بعد.</p>`;
+
+  box.querySelectorAll(".js-pos-recent-inv").forEach((row) => {
+    row.addEventListener("click", () => {
+      const inv = recentArr[Number(row.dataset.idx)];
+      if (inv) openCommercialInvoiceModal(inv);
+    });
+  });
+}
+
+// ==========================================================================
+// 21. الفاتورة التجارية الرسمية (دار صفقات كتابية) + الباركود + مشاركة واتساب
+// ==========================================================================
+function openCommercialInvoiceModalFromSale(saleObj) {
+  const code = saleObj.invoiceCode || `#INV-${saleObj.id.slice(0, 6).toUpperCase()}`;
+  const matchingSales = saleObj.invoiceCode
+    ? state.sales.filter((s) => s.invoiceCode === saleObj.invoiceCode)
+    : [saleObj];
+
+  const payload = {
+    invoiceCode: code,
+    datetimeStr: fmtFullDateTime(saleObj.timestamp),
+    customerName: saleObj.customerName || "عميلنا العزيز",
+    customerPhone: saleObj.customerPhone || "",
+    paymentMethod: saleObj.paymentMethod || "نقدي",
+    channel: saleObj.channel || "دار صفقات كتابية",
+    discountPct: saleObj.discountPct || 0,
+    netTotal: matchingSales.reduce((sum, x) => sum + (Number(x.totalAmount) || 0), 0),
+    items: matchingSales.map((x) => ({
+      title: x.isFreebie || x.copyFormat === "freebie" ? `${x.bookTitle} (هدية مجانية)` : x.bookTitle,
+      qty: x.qty,
+      unitPrice: x.unitPrice || 0,
+      lineTotal: x.totalAmount || 0,
+      isFreebie: Boolean(x.isFreebie || x.copyFormat === "freebie")
+    }))
+  };
+  openCommercialInvoiceModal(payload);
+}
+
+function openCommercialInvoiceModal(invData) {
+  state.currentInvoiceObj = invData;
+
+  if ($("inv-view-code")) $("inv-view-code").textContent = invData.invoiceCode;
+  if ($("inv-view-datetime")) $("inv-view-datetime").textContent = invData.datetimeStr;
+  if ($("inv-view-cust-name")) $("inv-view-cust-name").textContent = invData.customerName || "عميلنا العزيز";
+  if ($("inv-view-cust-phone")) $("inv-view-cust-phone").textContent = invData.customerPhone || "—";
+  if ($("inv-view-pay-method")) $("inv-view-pay-method").textContent = invData.paymentMethod || "نقدي";
+  if ($("inv-view-channel")) $("inv-view-channel").textContent = invData.channel || "دار صفقات كتابية";
+  if ($("inv-view-discount")) $("inv-view-discount").textContent = `${fmtNum(invData.discountPct || 0)}%`;
+  if ($("inv-view-net-total")) $("inv-view-net-total").textContent = fmtMoney(invData.netTotal);
+
+  const tbody = $("inv-view-items-tbody");
+  if (tbody) {
+    tbody.innerHTML = (invData.items || [])
+      .map(
+        (it) => `
+        <tr>
+          <td><strong>${esc(it.title)}</strong></td>
+          <td>${fmtNum(it.qty)}</td>
+          <td>${it.isFreebie ? "مجاني" : fmtMoney(it.unitPrice)}</td>
+          <td><strong>${it.isFreebie ? "0 ج.م" : fmtMoney(it.lineTotal)}</strong></td>
+        </tr>
+      `
+      )
+      .join("");
+  }
+
+  const qrBox = $("inv-view-qrcode-box");
+  if (qrBox) {
+    qrBox.innerHTML = "";
+    try {
+      if (typeof QRCode !== "undefined") {
+        new QRCode(qrBox, {
+          text: invData.invoiceCode,
+          width: 68,
+          height: 68,
+          colorDark: "#09090b",
+          colorLight: "#ffffff"
+        });
+      } else {
+        qrBox.innerHTML = `<span style="font-size:10px;font-family:monospace;font-weight:900;">${esc(invData.invoiceCode)}</span>`;
+      }
+    } catch (e) {
+      qrBox.innerHTML = `<span style="font-size:10px;font-family:monospace;font-weight:900;">${esc(invData.invoiceCode)}</span>`;
+    }
+  }
+
+  openModal("modal-invoice-preview");
+}
+
+function buildInvoiceWhatsappText(inv) {
+  const itemsLines = (inv.items || [])
+    .map((it) => `• ${it.title} (الكمية: ${it.qty}) —${it.isFreebie ? "هدية مجانية" : fmtMoney(it.lineTotal)}`)
+    .join("\n");
+
+  return [
+    `مرحباً بك أ. ${inv.customerName || "عميلنا العزيز"} 🌟`,
+    `نشكرك على اقتنائك من *دار صفقات كتابية للنشر والتوزيع* 📚`,
+    `────────────────────`,
+    `🧾 *فاتورة مبيعات معتمدة رقم:* ${inv.invoiceCode}`,
+    `📅 *التاريخ والوقت:* ${inv.datetimeStr}`,
+    `💳 *طريقة الدفع:* ${inv.paymentMethod}`,
+    `────────────────────`,
+    `*تفاصيل الإصدارات:*`,
+    itemsLines,
+    `────────────────────`,
+    `💰 *صافي الإجمالي المدفوع:* ${fmtMoney(inv.netTotal)}`,
+    `✅ *رمز التحقق الإلكتروني:* ${inv.invoiceCode}`,
+    `قراءة ممتعة ونعتز بثقتكم بنا 🤍`
+  ].join("\n");
+}
+
+function sanitizePhoneForWa(rawPhone) {
+  if (!rawPhone) return "";
+  let digits = String(rawPhone).replace(/[^\d+]/g, "");
+  if (digits.startsWith("+")) digits = digits.slice(1);
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("01") && digits.length === 11) {
+    digits = "2" + digits;
+  } else if (digits.startsWith("05") && digits.length === 10) {
+    digits = "966" + digits.slice(1);
+  } else if (digits.startsWith("7") && digits.length === 9) {
+    digits = "967" + digits;
+  }
+  return digits;
+}
+
+async function captureInvoiceAsBlob() {
+  const area = $("commercial-invoice-capture-area");
+  if (!area || typeof html2canvas === "undefined") return null;
+  const canvas = await html2canvas(area, {
+    scale: 2.2,
+    backgroundColor: "#ffffff",
+    useCORS: true
+  });
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/png", 0.95));
+}
+
+async function shareCommercialInvoiceWhatsapp(btnEl) {
+  const inv = state.currentInvoiceObj;
+  if (!inv) return;
+
+  await withButtonLock(btnEl, async () => {
+    const waText = buildInvoiceWhatsappText(inv);
+    const cleanPhone = sanitizePhoneForWa(inv.customerPhone);
+    const blob = await captureInvoiceAsBlob();
+
+    if (blob && navigator.canShare) {
+      const file = new File([blob], `Safaqat_Invoice_${inv.invoiceCode.replace("#", "")}.png`, { type: "image/png" });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            title: `فاتورة دار صفقات كتابية ${inv.invoiceCode}`,
+            text: waText,
+            files: [file]
+          });
+          return;
+        } catch (err) {
+          console.warn("Web Share fallback to direct WhatsApp link:", err);
+        }
+      }
+    }
+
+    if (blob) {
+      try {
+        if (navigator.clipboard && window.ClipboardItem) {
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+          toast("تم نسخ صورة الفاتورة تلقائياً! الصقها داخل محادثة واتساب", "ri-clipboard-line");
+        }
+      } catch (e) {}
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Safaqat_${inv.invoiceCode.replace("#", "")}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    }
+
+    const waUrl = cleanPhone
+      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`
+      : `https://wa.me/?text=${encodeURIComponent(waText)}`;
+    window.open(waUrl, "_blank");
+  });
+}
+
+async function downloadCommercialInvoiceImage(btnEl) {
+  const inv = state.currentInvoiceObj;
+  if (!inv) return;
+  await withButtonLock(btnEl, async () => {
+    const blob = await captureInvoiceAsBlob();
+    if (!blob) {
+      toast("تعذر توليد صورة الفاتورة", "ri-error-warning-line");
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Safaqat_Invoice_${inv.invoiceCode.replace("#", "")}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    toast("تم حفظ صورة الفاتورة الرسمية على جهازك");
+  });
+}
+
+// ==========================================================================
+// 22. الماسح الليزري بالكاميرا للتحقق الفوري من أصالة الفواتير (Laser QR Scanner)
+// ==========================================================================
+async function openLaserScannerModal() {
+  openModal("modal-scanner");
+  if ($("scanner-verification-result")) $("scanner-verification-result").style.display = "none";
+
+  let readerEl = document.getElementById("qr-reader-region") || document.getElementById("qr-reader- region");
+  if (readerEl) {
+    readerEl.id = "qr-reader-region";
+  }
+
+  if (typeof Html5Qrcode === "undefined" || !readerEl) return;
+
+  try {
+    if (state.qrScannerInstance && state.scannerRunning) {
+      await state.qrScannerInstance.stop();
+      state.scannerRunning = false;
+    }
+    state.qrScannerInstance = new Html5Qrcode("qr-reader-region");
+    state.scannerRunning = true;
+    await state.qrScannerInstance.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 220, height: 220 } },
+      (decodedText) => {
+        verifyInvoiceByCode(decodedText);
+      },
+      () => {}
+    );
+  } catch (err) {
+    console.warn("Camera access note:", err);
+  }
+}
+
+async function closeLaserScannerModal() {
+  if (state.qrScannerInstance && state.scannerRunning) {
+    try {
+      await state.qrScannerInstance.stop();
+    } catch (e) {}
+    state.scannerRunning = false;
+  }
+  closeModal("modal-scanner");
+}
+
+function verifyInvoiceByCode(rawCode) {
+  const clean = (rawCode || "").trim().toUpperCase();
+  if (!clean) {
+    toast("أدخل رقم الفاتورة أو امسح الباركود أولاً", "ri-error-warning-line");
+    return;
+  }
+
+  const normalized = clean.startsWith("#") ? clean : `#${clean}`;
+  const matchedSales = state.sales.filter(
+    (s) =>
+      (s.invoiceCode || "").toUpperCase() === normalized ||
+      (s.invoiceCode || "").toUpperCase() === clean ||
+      `#INV-${s.id.slice(0, 6).toUpperCase()}` === normalized
+  );
+
+  const resBox = $("scanner-verification-result");
+  if (!resBox) return;
+  resBox.style.display = "block";
+
+  if (matchedSales.length > 0) {
+    const first = matchedSales[0];
+    const totalSum = matchedSales.reduce((s, x) => s + (Number(x.totalAmount) || 0), 0);
+    resBox.style.background = "var(--pos-bg)";
+    resBox.style.border = "1.5px solid var(--pos-border)";
+    resBox.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span class="badge pos" style="font-size:13px;"><i class="ri-verified-badge-fill"></i> فاتورة أصلية ومعتمدة في النظام ✅</span>
+        <strong dir="ltr" style="font-family:monospace;">${esc(first.invoiceCode || normalized)}</strong>
+      </div>
+      <div style="font-size:12.5px;line-height:1.7;">
+        <div><strong>العميل / المشتري:</strong> ${esc(first.customerName \vert{}\vert{} "عميل الدار")} (${esc(first.customerPhone || "—")})</div>
+        <div><strong>التاريخ والوقت الدقيق:</strong> <span dir="ltr">${esc(fmtFullDateTime(first.timestamp))}</span></div>
+        <div><strong>الكتب المصدرة:</strong> ${matchedSales.map((m) => `${esc(m.bookTitle)} (×${m.qty})`).join(" + ")}</div>
+        <div><strong>إجمالي المدفوع:</strong> <strong class="money-pos">${fmtMoney(totalSum)}</strong></div>
+        <div><strong>صدرت بواسطة:</strong> ${esc(first.soldByName || first.soldBy)}</div>
+      </div>
+    `;
+  } else {
+    resBox.style.background = "var(--neg-bg)";
+    resBox.style.border = "1.5px solid var(--neg-border)";
+    resBox.innerHTML = `
+      <div style="color:var(--neg);font-weight:900;font-size:14px;margin-bottom:4px;">
+        <i class="ri-close-circle-fill"></i> تنبيه: هذه الفاتورة (${esc(rawCode)}) غير مسجلة في قاعدة بيانات دار صفقات كتابية!
+      </div>
+      <p style="font-size:12px;color:var(--text-secondary);">يرجى التأكد من صحة الرمز أو رقم الفاتورة.</p>
+    `;
+  }
+}
+
+// ==========================================================================
+// 23. نافذة البيع السريع المرن (ورقي / إلكتروني / إهداء + هدية مرافقة + فاتورة)
+// ==========================================================================
+function openQuickSellModal(bookId, exhId = "", presetFormat = "paper") {
+  const book = state.books.find((b) => b.id === bookId);
+  if (!book) return;
+
+  if ($("sell-confirm-book-id")) $("sell-confirm-book-id").value = book.id;
+  if ($("sell-confirm-exh-id")) $("sell-confirm-exh-id").value = exhId || "";
+  if ($("sell-confirm-book-title")) $("sell-confirm-book-title").textContent = `${book.title} —${book.authorName || ""}`;
+  if ($("sell-confirm-format")) $("sell-confirm-format").value = presetFormat;
+  if ($("sell-confirm-qty")) $("sell-confirm-qty").value = "1";
+  if ($("sell-confirm-disc")) $("sell-confirm-disc").value = "0";
+  if ($("sell-add-gift-check")) $("sell-add-gift-check").checked = false;
+  if ($("sell-gift-details-wrap")) $("sell-gift-details-wrap").style.display = "none";
+  if ($("sell-issue-invoice-check")) $("sell-issue-invoice-check").checked = false;
+  if ($("sell-customer-fields-wrap")) $("sell-customer-fields-wrap").style.display = "none";
+
+  updateQuickSellPreview();
+  openModal("modal-sell");
+}
+
+function updateQuickSellPreview() {
+  const bookId = $("sell-confirm-book-id")?.value;
+  const book = state.books.find((b) => b.id === bookId);
+  if (!book) return;
+
+  const format = $("sell-confirm-format")?.value || "paper";
+  const qty = Math.max(1, Number($("sell-confirm-qty")?.value) || 1);
+  const disc = Math.min(90, Math.max(0, Number($("sell-confirm-disc")?.value) || 0));
+  const stock = Number(book.stock) || 0;
+
+  const banner = $("sell-stock-status-banner");
+  const whWrap = $("sell-wh-field-wrap");
+  const discWrap = $("sell-disc-wrap");
+
+  if (format === "digital") {
+    if (whWrap) whWrap.style.display = "none";
+    if (discWrap) discWrap.style.display = "block";
+    if (banner) {
+      banner.style.background = "var(--pos-bg)";
+      banner.style.color = "var(--pos)";
+      banner.textContent = `نسخة إلكترونية رقمية: لا تُخصم من المخزون الورقي وتُحسب نسبتها للمؤلف (${book.royaltyRate}%).`;
+    }
+  } else if (format === "freebie") {
+    if (whWrap) whWrap.style.display = "block";
+    if (discWrap) discWrap.style.display = "none";
+    if (banner) {
+      banner.style.background = "var(--bg-subtle)";
+      banner.style.color = "var(--text-main)";
+      banner.textContent = `صرف إهداء مجاني: يُخصم (${qty}) من المستودع (المتوفر: ${stock}) ولا يُحسب عليه أي مبالغ للمؤلف.`;
+    }
+  } else {
+    if (whWrap) whWrap.style.display = "block";
+    if (discWrap) discWrap.style.display = "block";
+    if (banner) {
+      banner.style.background = stock >= qty ? "var(--pos-bg)" : "var(--neg-bg)";
+      banner.style.color = stock >= qty ? "var(--pos)" : "var(--neg)";
+      banner.textContent = `الرصيد الورقي المتاح بالمستودع: ${fmtNum(stock)} نسخة`;
+    }
+  }
+
+  const unitPrice = format === "freebie" ? 0 : format === "digital" ? Number(book.digitalPrice || book.price) || 0 : Number(book.price) || 0;
+  const net = format === "freebie" ? 0 : Math.round(unitPrice * qty * (1 - disc / 100) * 100) / 100;
+  if ($("sell-confirm-total")) $("sell-confirm-total").textContent = fmtMoney(net);
+}
+
+// ==========================================================================
+// 24. بوابة المؤلف المعزولة 100% + صفحة الكتاب المستقلة داخل بوابة المؤلف
+// ==========================================================================
+function renderAuthorPortalView() {
+  const author = state.authorDoc || state.authors.find((a) => a.email?.toLowerCase() === state.userEmail);
+  if (!author) return;
+
+  const fin = computeAuthorFinancials(author.id);
+
+  if ($("portal-author-name")) $("portal-author-name").textContent = `مرحباً بك، أ. ${author.name}`;
+  if ($("portal-author-avatar-box")) {
+    $("portal-author-avatar-box").innerHTML = `<div class="user-initials-circle" style="width:52px;height:52px;font-size:20px;">${renderAvatarHtml(author.name, author.avatarUrl)}</div>`;
+  }
+
+  if ($("portal-stat-copies")) $("portal-stat-copies").textContent = `${fmtNum(fin.paperCopies)} نسخة`;
+  if ($("portal-stat-digital")) $("portal-stat-digital").textContent = `${fmtNum(fin.digitalCopies)} نسخة`;
+  if ($("portal-stat-digital-rev")) $("portal-stat-digital-rev").textContent = `عائدك الرقمي: ${fmtMoney(fin.digitalEarned)}`;
+  if ($("portal-stat-earned")) $("portal-stat-earned").textContent = fmtMoney(fin.totalEarned);
+  if ($("portal-stat-paid")) $("portal-stat-paid").textContent = `تم تحويل: ${fmtMoney(fin.totalPaid)}`;
+  if ($("portal-stat-balance")) $("portal-stat-balance").textContent = fmtMoney(fin.balance);
+
+  if ($("portal-bank-method") && !$("portal-bank-method").matches(":focus")) $("portal-bank-method").value = author.bankMethod || "";
+  if ($("portal-bank-name") && !$("portal-bank-name").matches(":focus")) $("portal-bank-name").value = author.bankName || "";
+  if ($("portal-bank-holder") && !$("portal-bank-holder").matches(":focus")) $("portal-bank-holder").value = author.bankHolder || author.name || "";
+  if ($("portal-bank-account") && !$("portal-bank-account").matches(":focus")) $("portal-bank-account").value = author.bankAccount || "";
+  if ($("portal-bank-country") && !$("portal-bank-country").matches(":focus")) $("portal-bank-country").value = author.bankCountry || "";
+  if ($("portal-bank-notes") && !$("portal-bank-notes").matches(":focus")) $("portal-bank-notes").value = author.bankNotes || "";
+
+  const myBooks = state.books.filter((b) => b.authorId === author.id && b.authorAccessLevel !== "hidden");
+
+  const myExhSet = new Map();
+  myBooks.forEach((b) => {
+    getBookExhibitions(b.id).forEach((ex) => {
+      if (!myExhSet.has(ex.id)) myExhSet.set(ex.id, { ex, titles: [] });
+      myExhSet.get(ex.id).titles.push(b.title);
+    });
+  });
+
+  const exhBanner = $("portal-exhibitions-banner");
+  if (exhBanner) {
+    if (myExhSet.size > 0) {
+      exhBanner.innerHTML = Array.from(myExhSet.values())
+        .map(
+          ({ ex, titles }) => `
+          <div class="list-row" style="background:var(--bg-invert);color:var(--text-invert);border:none;">
+            <div>
+              <span class="badge pos"><i class="ri-compass-discover-line"></i> مشاركة نشطة في معرض</span>
+              <h4 style="font-size:15px;font-weight:800;margin-top:4px;">مؤلفاتك تشارك حالياً في: «${esc(ex.name)}» (${esc(ex.location || "")})</h4>
+              <p style="font-size:12.5px;opacity:0.85;">العناوين المشاركة: ${titles.map((t) => `«${esc(t)}»`).join(" ، ")}</p>
+            </div>
+          </div>
+        `
+        )
+        .join("");
+    } else {
+      exhBanner.innerHTML = "";
+    }
+  }
+
+  const showcase = $("portal-books-showcase");
+  if (showcase) {
+    showcase.innerHTML = myBooks.length
+      ? myBooks
+          .map((b) => {
+            const bFin = computeBookFinancials(b.id);
+            const cSt = getContractStatusInfo(b);
+            const exhs = getBookExhibitions(b.id);
+            const access = b.authorAccessLevel || "full_download";
+            return `
+              <div class="book-card clickable js-portal-open-book" data-id="${esc(b.id)}" style="cursor:pointer;">
+                <div class="book-cover-wrap">
+                  <div class="cover-badges">
+                    <span class="badge ${cSt.badgeClass}">${esc(cSt.label)}</span>
+                  </div>
+                  ${
+                    b.coverUrl
+                      ? `<img src="${esc(b.coverUrl)}" alt="${esc(b.title)}" />`
+                      : `<div class="book-typo-cover"><i class="ri-book-2-line"></i><h4>${esc(b.title)}</h4></div>`
+                  }
+                </div>
+                <div class="book-body">
+                  <div class="book-title-link">${esc(b.title)}</div>${exhs.map((x) => `<div class="book-exh-tag"><i class="ri-compass-discover-line"></i><span>مشارك في: ${esc(x.name)}</span></div>`).join("")}
+                  <div class="book-mini-stats">
+                    <div><span>مبيعات ورقية</span><strong>${fmtNum(bFin.paperSold)} نسخة</strong></div>
+                    <div><span>مبيعات إلكترونية</span><strong>${fmtNum(bFin.digitalSold)} نسخة</strong></div>
+                    <div><span>نسبتك بالعقد</span><strong>${fmtNum(b.royaltyRate)}%</strong></div>
+                    <div><span>صافي عائدك</span><strong class="money-pos">${fmtMoney(bFin.authorCutTotal)}</strong></div>
+                  </div>
+                  <div style="display:flex;gap:6px;margin-top:8px;">
+                    <button type="button" class="btn btn-primary" style="flex:1;padding:6px 10px;font-size:11.5px;">
+                      <i class="ri-file-list-3-line"></i><span>صفحة وكشف الكتاب</span>
+                    </button>
+                    ${
+                      access !== "stats_only" && b.driveUrl
+                        ? `<button type="button" class="btn btn-outline js-portal-book-pdf" data-title="عقد: ${esc(b.title)}" data-url="${esc(b.driveUrl)}" data-dl="${access === "full_download" ? "1" : "0"}" style="padding:6px 10px;font-size:11.5px;"><i class="ri-file-pdf-2-line"></i></button>`
+                        : ""
+                    }
+                  </div>
+                </div>
+              </div>
+            `;
+          })
+          .join("")
+      : `<div class="surface-card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">لا توجد مؤلفات مضافة في بوابتك حالياً.</div>`;
+
+    showcase.querySelectorAll(".js-portal-open-book").forEach((card) => {
+      card.addEventListener("click", () => {
+        state.portalSelectedBookId = card.dataset.id;
+        navigateTo("view-author-book-detail");
+      });
+    });
+    showcase.querySelectorAll(".js-portal-book-pdf").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openPdfViewer(btn.dataset.title, btn.dataset.url, btn.dataset.dl === "1");
+      });
+    });
+  }
+
+  const pList = $("portal-payouts-list");
+  if (pList) {
+    pList.innerHTML = fin.payouts.length
+      ? fin.payouts
+          .map(
+            (p) => `
+          <div class="list-row">
+            <div>
+              <span class="badge pos">تم التحويل</span>
+              <strong style="margin-right:6px;">${fmtMoney(p.amount)} عبر ${esc(p.method)}</strong>
+              <div style="font-size:12px;color:var(--text-secondary);">${esc(p.notes \vert{}\vert{} "")} • ${esc(fmtFullDateTime(p.timestamp))}</div>
+            </div>
+            ${
+              p.receiptUrl
+                ? `<a href="${esc(p.receiptUrl)}" target="_blank" class="btn btn-outline" style="padding:5px 10px;font-size:12px;"><i class="ri-image-line"></i> إيصال التحويل</a>`
+                : ""
+            }
+          </div>
+        `
+          )
+          .join("")
+      : `<div class="surface-card" style="text-align:center;color:var(--text-muted);">لا توجد حوالات سابقة مسجلة بعد.</div>`;
+  }
+}
+
+function renderAuthorPortalBookDetailView(bookId) {
+  const book = state.books.find((b) => b.id === bookId);
+  if (!book) return;
+
+  const fin = computeBookFinancials(book.id);
+  const cSt = getContractStatusInfo(book);
+  const exhs = getBookExhibitions(book.id);
+  const access = book.authorAccessLevel || "full_download";
+
+  if ($("portal-book-detail-header")) {
+    $("portal-book-detail-header").innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;">
+        <div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+            <span class="badge ${cSt.badgeClass}">${esc(cSt.label)}</span>${exhs.map((x) => `<span class="badge invert"><i class="ri-compass-discover-line"></i> مشارك في: ${esc(x.name)}</span>`).join("")}
+          </div>
+          <h2 style="font-size:20px;font-weight:900;">${esc(book.title)}</h2>
+          <p style="font-size:13px;color:var(--text-secondary);">كشف حساب وتقرير مبيعات خاص بهذا الكتاب</p>
+        </div>
+        <div style="display:flex;gap:6px;">
+          ${
+            access !== "stats_only" && book.driveUrl
+              ? `<button type="button" id="btn-pbook-view-contract" class="btn btn-outline"><i class="ri-file-pdf-2-line"></i> وثيقة العقد</button>`
+              : ""
+          }
+        </div>
+      </div>
+    `;
+    if ($("btn-pbook-view-contract")) {
+      $("btn-pbook-view-contract").onclick = () => openPdfViewer(`وثيقة عقد: ${book.title}`, book.driveUrl, access === "full_download");
+    }
+  }
+
+  if ($("pbook-paper-sold")) $("pbook-paper-sold").textContent = `${fmtNum(fin.paperSold)} نسخة`;
+  if ($("pbook-paper-price")) $("pbook-paper-price").textContent = `سعر النسخة: ${fmtMoney(book.price)}`;
+  if ($("pbook-dig-sold")) $("pbook-dig-sold").textContent = `${fmtNum(fin.digitalSold)} نسخة`;
+  if ($("pbook-dig-price")) $("pbook-dig-price").textContent = `سعر الإلكتروني: ${fmtMoney(book.digitalPrice || book.price)}`;
+  if ($("pbook-royalty")) $("pbook-royalty").textContent = `${fmtNum(book.royaltyRate)}%`;
+  if ($("pbook-contract-status")) $("pbook-contract-status").textContent = cSt.label;
+  if ($("pbook-total-earned")) $("pbook-total-earned").textContent = fmtMoney(fin.authorCutTotal);
+
+  const salesBox = $("portal-book-sales-breakdown");
+  if (salesBox) {
+    const mySales = state.sales.filter((s) => s.bookId === book.id && !s.isFreebie && s.copyFormat !== "freebie");
+    salesBox.innerHTML = mySales.length
+      ? mySales
+          .map(
+            (s) => `
+          <div class="list-row">
+            <div>
+              <span class="badge ${s.copyFormat === "digital" ? "pos" : "invert"}">${s.copyFormat === "digital" ? "مبيعات إلكترونية" : "مبيعات ورقية"}</span>
+              <strong style="margin-right:6px;">الكمية المباعة: ${fmtNum(s.qty)} نسخة (${esc(s.channel || "مبيعات الدار")})</strong>
+              <div style="font-size:12px;color:var(--text-secondary);" dir="ltr">${esc(fmtFullDateTime(s.timestamp))}</div>
+            </div>
+            <strong class="money-pos">عائدك: + ${fmtMoney(s.authorCut)}</strong>
+          </div>
+        `
+          )
+          .join("")
+      : `<p style="color:var(--text-muted);font-size:13px;">لا توجد عمليات بيع مسجلة لهذا الكتاب بعد.</p>`;
+  }
+}
+
+// ==========================================================================
+// 25. دوال فتح وتعبئة النماذج، الحاسبة الذكية، الكشوفات المرنة، والنسخ الاحتياطي
+// ==========================================================================
+function openAuthorFormForNew() {
+  if ($("form-author-title")) $("form-author-title").textContent = "إنشاء ملف مؤلف جديد";
+  if ($("author-id-field")) $("author-id-field").value = "";
+  $("form-author")?.reset();
+  navigateTo("view-form-author");
+}
+
+function openAuthorFormForEdit(author) {
+  if ($("form-author-title")) $("form-author-title").textContent = `تعديل ملف المؤلف: ${author.name}`;
+  if ($("author-id-field")) $("author-id-field").value = author.id;
+  if ($("author-name-field")) $("author-name-field").value = author.name || "";
+  if ($("author-email-field")) $("author-email-field").value = author.email || "";
+  if ($("author-phone-field")) $("author-phone-field").value = author.phone || "";
+  if ($("author-bio-field")) $("author-bio-field").value = author.bio || "";
+  if ($("author-bank-name-field")) $("author-bank-name-field").value = author.bankName || "";
+  if ($("author-bank-acc-field")) $("author-bank-acc-field").value = author.bankAccount || "";
+  if ($("author-bank-holder-field")) $("author-bank-holder-field").value = author.bankHolder || "";
+  if ($("author-bank-country-field")) $("author-bank-country-field").value = author.bankCountry || "";
+  if ($("author-restricted-check")) $("author-restricted-check").checked = Boolean(author.restricted);
+  navigateTo("view-form-author");
+}
+
+function openBookFormForNew(preselectedAuthorId = "") {
+  if ($("form-book-title")) $("form-book-title").textContent = "توثيق عقد كتاب جديد";
+  if ($("book-id-field")) $("book-id-field").value = "";
+  $("form-book")?.reset();
+  if ($("book-date-field")) $("book-date-field").value = todayISO();
+  if (preselectedAuthorId && $("book-author-select")) {
+    $("book-author-select").value = preselectedAuthorId;
+  }
+  if ($("book-dup-warning")) $("book-dup-warning").classList.remove("show");
+  navigateTo("view-form-book");
+}
+
+function openBookFormForEdit(book) {
+  if ($("form-book-title")) $("form-book-title").textContent = `تعديل عقد وبيانات كتاب: ${book.title}`;
+  if ($("book-id-field")) $("book-id-field").value = book.id;
+  if ($("book-title-field")) $("book-title-field").value = book.title || "";
+  if ($("book-author-select")) $("book-author-select").value = book.authorId || "";
+  if ($("book-price-field")) $("book-price-field").value = book.price || 0;
+  if ($("book-digital-price-field")) $("book-digital-price-field").value = book.digitalPrice || "";
+  if ($("book-royalty-field")) $("book-royalty-field").value = book.royaltyRate ?? 20;
+  if ($("book-months-field")) $("book-months-field").value = book.contractMonths || 24;
+  if ($("book-date-field")) $("book-date-field").value = book.contractDate || todayISO();
+  if ($("book-fav-check")) $("book-fav-check").checked = Boolean(book.favorite);
+  if ($("book-stock-field")) $("book-stock-field").value = book.stock ?? 0;
+  if ($("book-edition-field")) $("book-edition-field").value = book.editionLabel || "";
+  if ($("book-isbn-field")) $("book-isbn-field").value = book.isbn || "";
+  if ($("book-cat-field")) $("book-cat-field").value = book.category || "";
+  if ($("book-drive-field")) $("book-drive-field").value = book.driveUrl || "";
+  if ($("book-print-drive-field")) $("book-print-drive-field").value = book.printDriveUrl || "";
+  if ($("book-author-access-select")) $("book-author-access-select").value = book.authorAccessLevel || "full_download";
+  if ($("book-notes-field")) $("book-notes-field").value = book.notes || "";
+  navigateTo("view-form-book");
+}
+
+function renderBooksMultiChecklist(containerId, filterQuery = "", selectedIds = []) {
+  const box = $(containerId);
+  if (!box) return;
+  const q = filterQuery.trim().toLowerCase();
+  const selSet = new Set(selectedIds);
+
+  const list = state.books.filter((b) => !q || (b.title || "").toLowerCase().includes(q) || (b.authorName || "").toLowerCase().includes(q));
+  box.innerHTML = list
+    .map(
+      (b) => `
+      <label class="check-tile">
+        <input type="checkbox" value="${esc(b.id)}" ${selSet.has(b.id) ? "checked" : ""} />
+        <span>${esc(b.title)} <small style="color:var(--text-muted);">(${esc(b.authorName || "")})</small></span>
+      </label>
+    `
+    )
+    .join("");
+}
+
+function openExhibitionFormForNew() {
+  if ($("form-exh-heading")) $("form-exh-heading").textContent = "إنشاء معرض أو فعالية جديدة";
+  if ($("exh-id-field")) $("exh-id-field").value = "";
+  $("form-exhibition")?.reset();
+  if ($("exh-start-date")) $("exh-start-date").value = todayISO();
+  if ($("exh-end-date")) $("exh-end-date").value = todayISO();
+  renderBooksMultiChecklist("exh-books-checklist", "", []);
+  navigateTo("view-form-exhibition");
+}
+
+function openExhibitionFormForEdit(exh) {
+  if ($("form-exh-heading")) $("form-exh-heading").textContent = `تعديل المعرض: ${exh.name}`;
+  if ($("exh-id-field")) $("exh-id-field").value = exh.id;
+  if ($("exh-name-field")) $("exh-name-field").value = exh.name || "";
+  if ($("exh-location-field")) $("exh-location-field").value = exh.location || "";
+  if ($("exh-prep-date")) $("exh-prep-date").value = exh.prepDate || "";
+  if ($("exh-start-date")) $("exh-start-date").value = exh.startDate || "";
+  if ($("exh-end-date")) $("exh-end-date").value = exh.endDate || "";
+  if ($("exh-budget-field")) $("exh-budget-field").value = exh.budget || 0;
+  if ($("exh-notes-field")) $("exh-notes-field").value = exh.notes || "";
+  renderBooksMultiChecklist("exh-books-checklist", "", exh.bookIds || []);
+  navigateTo("view-form-exhibition");
+}
+
+function openStaffFormForEdit(staffId) {
+  const st = state.staff.find((s) => s.id === staffId);
+  if (!st) return;
+  if ($("form-staff-title")) $("form-staff-title").textContent = `تعديل صلاحيات الموظف: ${st.name}`;
+  if ($("staff-id-field")) $("staff-id-field").value = st.id;
+  if ($("staff-name-field")) $("staff-name-field").value = st.name || "";
+  if ($("staff-email-field")) $("staff-email-field").value = st.email || "";
+  if ($("staff-job-field")) $("staff-job-field").value = st.jobTitle || "";
+  if ($("staff-restricted-check")) $("staff-restricted-check").checked = Boolean(st.restricted);
+
+  const p = st.permissions || {};
+  if ($("perm-pos")) $("perm-pos").checked = p.pos !== false;
+  if ($("perm-sell")) $("perm-sell").checked = Boolean(p.sell);
+  if ($("perm-add-book")) $("perm-add-book").checked = Boolean(p.addBook);
+  if ($("perm-delete-book")) $("perm-delete-book").checked = Boolean(p.deleteBook);
+  if ($("perm-authors")) $("perm-authors").checked = Boolean(p.authors);
+  if ($("perm-payouts")) $("perm-payouts").checked = Boolean(p.payouts);
+  if ($("perm-expenses")) $("perm-expenses").checked = Boolean(p.expenses);
+  if ($("perm-finance-view")) $("perm-finance-view").checked = Boolean(p.financeView);
+  if ($("perm-reports")) $("perm-reports").checked = Boolean(p.reports);
+
+  navigateTo("view-form-staff");
+}
+
+function updateCalculatorBreakdown() {
+  const box = $("calc-book-breakdown");
+  if (!box) return;
+  const bookId = $("calc-book-select")?.value;
+  const book = state.books.find((b) => b.id === bookId);
+  if (!book) {
+    box.innerHTML = `<div style="grid-column:1/-1;font-size:12px;color:var(--text-muted);text-align:center;">اختر كتاباً من الأعلى لحساب الأرباح والنسب تلقائياً</div>`;
+    return;
+  }
+  const cType = $("calc-copy-type")?.value || "paper";
+  const qty = Math.max(1, Number($("calc-book-qty")?.value) || 1);
+  const disc = Math.min(90, Math.max(0, Number($("calc-book-disc")?.value) || 0));
+  const unitPrice = cType === "digital" ? Number(book.digitalPrice || book.price) || 0 : Number(book.price) || 0;
+  const gross = unitPrice * qty;
+  const net = Math.round(gross * (1 - disc / 100) * 100) / 100;
+  const authorCut = Math.round(net * ((Number(book.royaltyRate) || 0) / 100) * 100) / 100;
+  const houseCut = Math.round((net - authorCut) * 100) / 100;
+
+  box.innerHTML = `
+    <div class="calc-res-box"><span>الإجمالي قبل الخصم</span><strong>${fmtMoney(gross)}</strong></div>
+    <div class="calc-res-box"><span>صافي التحصيل (${100 - disc}%)</span><strong class="money-pos">${fmtMoney(net)}</strong></div>
+    <div class="calc-res-box"><span>ربح المؤلف (${book.royaltyRate}\%)</span><strong>${fmtMoney(authorCut)}</strong></div>
+    <div class="calc-res-box"><span>صافي ربح الدار</span><strong class="money-pos">${fmtMoney(houseCut)}</strong></div>
+  `;
+}
+
+function updateAuthorReportTemplate() {
+  const authorId = $("report-author-id")?.value || state.selectedAuthorId;
+  const author = state.authors.find((a) => a.id === authorId);
+  if (!author) return;
+  const fin = computeAuthorFinancials(author.id);
+  const rType = $("report-type-select")?.value || "welcome";
+  const area = $("report-text-area");
+  if (!area) return;
+
+  if (rType === "welcome") {
+    area.value = [
+      `أهلاً ومرحباً بك أ. ${author.name} في عائلة «دار صفقات كتابية للنشر والتوزيع» 📚`,
+      ``,
+      `يسعدنا إبلاغك بتفعيل حسابك الرسمي على بوابة المؤلف الإلكترونية الخاصة بنا.`,
+      `يمكنك الدخول في أي وقت لمتابعة مبيعات مؤلفاتك (الورقية والإلكترونية) لحظة بلحظة، واستعراض عقودك ومحفظتك المالية عبر الرابط التالي:`,
+      `${window.location.origin}`,
+      ``,
+      `طريقة الدخول: اضغط على (الدخول عبر Google) باستخدام بريدك المعتمد: ${author.email}`,
+      `نتمنى لك رحلة نشر مثمرة وناجحة معنا!`
+    ].join("\n");
+  } else if (rType === "bank_fix") {
+    area.value = [
+      `تحية طيبة أ. ${author.name}،`,
+      `نرجو منك التكرم بالدخول إلى بوابتك الخاصة في نظام دار صفقات كتابية ومراجعة أو استكمال (بيانات الحساب البنكي وطريقة التحويل)، وذلك ليتسنى للإدارة المالية تحويل مستحقاتك بكل سلاسة.`,
+      `رابط البوابة: ${window.location.origin}`
+    ].join("\n");
+  } else {
+    area.value = [
+      `التقرير المالي الرسمي للمؤلف: أ. ${author.name}`,
+      `صادر عن: دار صفقات كتابية للنشر والتوزيع (${todayISO()})`,
+      `────────────────────────`,
+      `• عدد المؤلفات المسجلة: ${fin.booksCount} كتاب`,
+      `• إجمالي النسخ الورقية المباعة: ${fin.paperCopies} نسخة`,
+      `• إجمالي النسخ الإلكترونية المباعة: ${fin.digitalCopies} نسخة`,
+      `• إجمالي الأرباح المحققة لك: ${fmtMoney(fin.totalEarned)}`,
+      `• إجمالي الحوالات المسددة لك: ${fmtMoney(fin.totalPaid)}`,
+      `• صافي الرصيد المتاح في محفظتك حالياً: ${fmtMoney(fin.balance)}`,
+      `────────────────────────`,
+      `للاطلاع على التفاصيل الكاملة لكل كتاب: ${window.location.origin}`
+    ].join("\n");
+  }
+}
+
+function exportFullSystemBackup() {
+  const backupData = {
+    exportedAt: new Date().toISOString(),
+    system: "Safaqat System ERP & POS v3.1",
+    books: state.books,
+    authors: state.authors,
+    sales: state.sales,
+    payouts: state.payouts,
+    expenses: state.expenses,
+    warehouses: state.warehouses,
+    editions: state.editions,
+    libraries: state.libraries,
+    libraryTransactions: state.libTx,
+    exhibitions: state.exhibitions
+  };
+  const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Safaqat_Full_Backup_${todayISO()}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  toast("تم تحميل النسخة الاحتياطية الكاملة للنظام بنجاح");
+}
+
+// ==========================================================================
+// 26. ربط كافة الأحداث والأزرار والنماذج (Master DOM Wiring)
+// ==========================================================================
+function bindAllEvents() {
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    state.deferredPwaPrompt = e;
+  });
+
+  const triggerPwaInstall = async () => {
+    if (state.deferredPwaPrompt) {
+      state.deferredPwaPrompt.prompt();
+      await state.deferredPwaPrompt.userChoice;
+      state.deferredPwaPrompt = null;
+    } else {
+      toast("لتثبيت النظام على هاتفك: افتح خيارات المتصفح واختر (إضافة إلى الشاشة الرئيسية / Install App)");
+    }
+  };
+  $("btn-drawer-install-pwa")?.addEventListener("click", triggerPwaInstall);
+  $("btn-portal-install-pwa")?.addEventListener("click", triggerPwaInstall);
+
+  // تسجيل الدخول الذكي للجوال والكمبيوتر (Popup مع انتقال تلقائي لـ Redirect إذا حظر متصفح الجوال النافذة المنبثقة)
+  $("btn-google-login")?.addEventListener("click", (e) =>
+    withButtonLock(e.currentTarget, async () => {
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (err) {
+        if (
+          err?.code === "auth/popup-blocked" ||
+          err?.code === "auth/operation-not-supported-in-this-environment" ||
+          err?.code === "auth/cancelled-popup-request"
+        ) {
+          await signInWithRedirect(auth, googleProvider);
+        } else {
+          throw err;
+        }
+      }
+    })
+  );
+
+  $("btn-profile-logout")?.addEventListener("click", () => openModal("modal-logout"));
+  $("btn-portal-logout")?.addEventListener("click", () => openModal("modal-logout"));
+  $("btn-confirm-logout-now")?.addEventListener("click", async () => {
+    closeModal("modal-logout");
+    await signOut(auth);
+  });
+
+  $("btn-confirm-exec")?.addEventListener("click", async (e) => {
+    if (typeof state.confirmCallback === "function") {
+      await withButtonLock(e.currentTarget, async () => {
+        await state.confirmCallback();
+      });
+    }
+    state.confirmCallback = null;
+    closeModal("modal-confirm");
+  });
+
+  $$("[data-close-modal]").forEach((btn) => {
+    btn.addEventListener("click", () => closeModal(btn.dataset.closeModal));
+  });
+
+  $("btn-open-drawer")?.addEventListener("click", openSideDrawer);
+  $("btn-close-drawer")?.addEventListener("click", closeSideDrawer);
+  $("drawer-backdrop")?.addEventListener("click", closeSideDrawer);
+  $("brand-home-trigger")?.addEventListener("click", () => navigateTo(state.isPosOnlyStaff ? "view-pos" : "view-dashboard"));
+  $("btn-header-pos")?.addEventListener("click", () => navigateTo("view-pos"));
+  $("btn-header-notif")?.addEventListener("click", () => navigateTo("view-notifications"));
+  $("btn-header-profile-avatar")?.addEventListener("click", () => navigateTo("view-profile"));
+
+  $$(".drawer-link").forEach((link) => {
+    link.addEventListener("click", () => {
+      if (link.dataset.nav) navigateTo(link.dataset.nav);
+    });
+  });
+
+  $$(".dock-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.dock) navigateTo(btn.dataset.dock);
+    });
+  });
+
+  $$(".js-back-view").forEach((btn) => {
+    btn.addEventListener("click", () => navigateTo(btn.dataset.target || "view-dashboard"));
+  });
+
+  $("btn-hero-pos")?.addEventListener("click", () => navigateTo("view-pos"));
+  $("btn-hero-books")?.addEventListener("click", () => navigateTo("view-contracts"));
+  $("qtool-pos")?.addEventListener("click", () => navigateTo("view-pos"));
+  $("qtool-scanner")?.addEventListener("click", openLaserScannerModal);
+  $("qtool-calculator")?.addEventListener("click", () => {
+    updateCalculatorBreakdown();
+    openModal("modal-calculator");
+  });
+  $("qtool-archive")?.addEventListener("click", () => navigateTo("view-archive"));
+  $("qtool-contests")?.addEventListener("click", () => navigateTo("view-contests"));
+  $("qtool-statement")?.addEventListener("click", () => openModal("modal-statement-builder"));
+  $("qtool-guide")?.addEventListener("click", () => navigateTo("view-guide"));
+  $("qtool-backup")?.addEventListener("click", exportFullSystemBackup);
+  $("qtool-theme")?.addEventListener("click", () => {
+    const curr = document.documentElement.getAttribute("data-theme") || "light";
+    const next = curr === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("safaqat_theme", next);
+    renderSalesChart();
+  });
+
+  $("btn-dock-quick-add")?.addEventListener("click", () => $("quick-add-sheet")?.classList.add("show"));
+  $("btn-close-quick-add")?.addEventListener("click", () => $("quick-add-sheet")?.classList.remove("show"));
+  const bindQuickTile = (id, fn) => {
+    $(id)?.addEventListener("click", () => {
+      $("quick-add-sheet")?.classList.remove("show");
+      fn();
+    });
+  };
+  bindQuickTile("qadd-pos", () => navigateTo("view-pos"));
+  bindQuickTile("qadd-contract", () => openBookFormForNew());
+  bindQuickTile("qadd-author", () => openAuthorFormForNew());
+  bindQuickTile("qadd-contest", () => navigateTo("view-form-contest"));
+  bindQuickTile("qadd-edition", () => navigateTo("view-form-edition"));
+  bindQuickTile("qadd-library", () => navigateTo("view-form-library"));
+  bindQuickTile("qadd-exhibition", () => openExhibitionFormForNew());
+  bindQuickTile("qadd-payout", () => navigateTo("view-form-payout"));
+  bindQuickTile("qadd-expense", () => {
+    renderBooksMultiChecklist("expense-books-checklist", "", []);
+    navigateTo("view-form-expense");
+  });
+
+  $("global-smart-search")?.addEventListener("input", (e) => handleGlobalSmartSearch(e.target.value));
+  $("btn-close-quick-search")?.addEventListener("click", () => {
+    if ($("quick-search-panel")) $("quick-search-panel").style.display = "none";
+  });
+
+  $("btn-low-stock-goto")?.addEventListener("click", () => navigateTo("view-warehouses"));
+  $("btn-expiry-radar-goto")?.addEventListener("click", () => {
+    state.bookFilter = "expiring";
+    navigateTo("view-contracts");
+  });
+  $("btn-dash-all-books")?.addEventListener("click", () => navigateTo("view-contracts"));
+
+  $$(".js-chart-type").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.chartType = btn.dataset.type || "bar";
+      $$(".js-chart-type").forEach((b) => {
+        b.className = b === btn ? "btn btn-primary js-chart-type" : "btn btn-outline js-chart-type";
+      });
+      renderSalesChart();
+    });
+  });
+
+  $("pos-book-search-input")?.addEventListener("input", renderPosView);
+  $("pos-copy-format")?.addEventListener("change", renderPosCart);
+  $("pos-discount-input")?.addEventListener("input", renderPosCart);
+  $("btn-pos-clear-cart")?.addEventListener("click", () => {
+    state.posCart = [];
+    renderPosCart();
+  });
+  $("btn-pos-checkout-issue")?.addEventListener("click", (e) => withButtonLock(e.currentTarget, handlePosCheckout));
+  $("btn-pos-open-scanner")?.addEventListener("click", openLaserScannerModal);
+  $("btn-close-scanner-modal")?.addEventListener("click", closeLaserScannerModal);
+  $("btn-pos-verify-code")?.addEventListener("click", () => {
+    const code = $("pos-verify-code-input")?.value || "";
+    openModal("modal-scanner");
+    verifyInvoiceByCode(code);
+  });
+  $("btn-scanner-manual-check")?.addEventListener("click", () => {
+    verifyInvoiceByCode($("scanner-manual-input")?.value || "");
+  });
+
+  $("btn-inv-share-whatsapp")?.addEventListener("click", (e) => shareCommercialInvoiceWhatsapp(e.currentTarget));
+  $("btn-inv-download-img")?.addEventListener("click", (e) => downloadCommercialInvoiceImage(e.currentTarget));
+  $("btn-inv-print-direct")?.addEventListener("click", () => {
+    $("modal-invoice-preview")?.classList.add("print-active-modal");
+    window.print();
+    setTimeout(() => $("modal-invoice-preview")?.classList.remove("print-active-modal"), 500);
+  });
+
+  $("books-search-input")?.addEventListener("input", renderBooksView);
+  $("btn-top-add-contract")?.addEventListener("click", () => openBookFormForNew());
+  $$("[data-book-filter]").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      state.bookFilter = pill.dataset.bookFilter || "all";
+      $$("[data-book-filter]").forEach((p) => p.classList.toggle("active", p === pill));
+      renderBooksView();
+    });
+  });
+
+  $("btn-back-from-book")?.addEventListener("click", () => navigateTo("view-contracts"));
+  $("btn-book-det-sell")?.addEventListener("click", () => {
+    if (state.selectedBookId) openQuickSellModal(state.selectedBookId, "", "paper");
+  });
+  $("btn-book-det-freebie")?.addEventListener("click", () => {
+    if (state.selectedBookId) openQuickSellModal(state.selectedBookId, "", "freebie");
+  });
+  $("btn-book-det-edition")?.addEventListener("click", () => {
+    if ($("ed-book-select") && state.selectedBookId) $("ed-book-select").value = state.selectedBookId;
+    navigateTo("view-form-edition");
+  });
+  $("btn-book-det-statement")?.addEventListener("click", () => {
+    const b = state.books.find((x) => x.id === state.selectedBookId);
+    if ($("print-custom-main-title")) $("print-custom-main-title").textContent = `دار صفقات كتابية للنشر والتوزيع | كشف حساب كتاب: ${b?.title || ""}`;
+    window.print();
+  });
+  $("btn-book-det-edit")?.addEventListener("click", () => {
+    const b = state.books.find((x) => x.id === state.selectedBookId);
+    if (b) openBookFormForEdit(b);
+  });
+  $("btn-book-det-terminate")?.addEventListener("click", () => {
+    const b = state.books.find((x) => x.id === state.selectedBookId);
+    if (!b) return;
+    const isTerm = b.contractStatus === "terminated";
+    askConfirm(
+      isTerm ? "إعادة تفعيل العقد" : "فسخ / تجميد العقد",
+      `هل أنت متأكد من ${isTerm ? "إعادة تفعيل" : "فسخ وتجميد"} عقد كتاب «${b.title}»؟`,
+      async () => {
+        await updateDoc(doc(db, "books", b.id), { contractStatus: isTerm ? "active" : "terminated" });
+        await logActivity(isTerm ? "إعادة تفعيل عقد كتاب" : "فسخ عقد كتاب", `الكتاب: ${b.title}`, {
+          targetView: "view-book-detail",
+          targetEntityId: b.id
+        });
+        toast("تم تحديث حالة العقد");
+      }
+    );
+  });
+  $("btn-book-det-delete")?.addEventListener("click", () => {
+    const b = state.books.find((x) => x.id === state.selectedBookId);
+    if (!b) return;
+    askConfirm("حذف الكتاب نهائياً", `هل أنت متأكد من حذف كتاب «${b.title}» من النظام؟`, async () => {
+      await deleteDoc(doc(db, "books", b.id));
+      await logActivity("حذف كتاب", `تم حذف كتاب: ${b.title}`);
+      toast("تم حذف الكتاب");
+      navigateTo("view-contracts");
+    });
+  });
+
+  $("btn-bdet-save-access")?.addEventListener("click", (e) =>
+    withButtonLock(e.currentTarget, async () => {
+      if (!state.selectedBookId) return;
+      const newLevel = $("bdet-quick-access-select")?.value || "full_download";
+      await updateDoc(doc(db, "books", state.selectedBookId), { authorAccessLevel: newLevel });
+      await logActivity("تحديث صلاحية المؤلف على كتاب", `المستوى الجديد: ${newLevel}`, {
+        targetView: "view-book-detail",
+        targetEntityId: state.selectedBookId
+      });
+      toast("تم تحديث صلاحية المؤلف على الكتاب فوراً");
+    })
+  );
+
+  ["sell-confirm-format", "sell-confirm-qty", "sell-confirm-disc"].forEach((id) => {
+    $(id)?.addEventListener("input", updateQuickSellPreview);
+    $(id)?.addEventListener("change", updateQuickSellPreview);
+  });
+  $("sell-add-gift-check")?.addEventListener("change", (e) => {
+    if ($("sell-gift-details-wrap")) $("sell-gift-details-wrap").style.display = e.target.checked ? "block" : "none";
+  });
+  $("sell-issue-invoice-check")?.addEventListener("change", (e) => {
+    if ($("sell-customer-fields-wrap")) $("sell-customer-fields-wrap").style.display = e.target.checked ? "block" : "none";
+  });
+
+  $("form-sell-confirm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-sell-confirm"), async () => {
+      const bookId = $("sell-confirm-book-id")?.value;
+      const book = state.books.find((b) => b.id === bookId);
+      if (!book) return;
+
+      const format = $("sell-confirm-format")?.value || "paper";
+      const whId = $("sell-confirm-wh")?.value || "main_warehouse";
+      const exhId = $("sell-confirm-exh-id")?.value || "";
+      const qty = Math.max(1, Number($("sell-confirm-qty")?.value) || 1);
+      const disc = format === "freebie" ? 100 : Math.min(90, Math.max(0, Number($("sell-confirm-disc")?.value) || 0));
+      const channel = $("sell-confirm-channel")?.value || "بيع مباشر / الدار";
+
+      if ((format === "paper" || format === "freebie") && (Number(book.stock) || 0) < qty) {
+        toast(`المخزون الورقي غير كافٍ! المتوفر: ${book.stock || 0}`, "ri-error-warning-line");
+        return;
+      }
+
+      const now = Date.now();
+      const invoiceCode = `#INV-${new Date(now).getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const custName = ($("sell-cust-name")?.value || "").trim() || "عميلنا العزيز";
+      const custPhone = ($("sell-cust-phone")?.value || "").trim();
+
+      const unitPrice = format === "freebie" ? 0 : format === "digital" ? Number(book.digitalPrice || book.price) || 0 : Number(book.price) || 0;
+      const totalAmount = format === "freebie" ? 0 : Math.round(unitPrice * qty * (1 - disc / 100) * 100) / 100;
+      const authorCut = format === "freebie" ? 0 : Math.round(totalAmount * ((Number(book.royaltyRate) || 0) / 100) * 100) / 100;
+      const houseCut = format === "freebie" ? 0 : Math.round((totalAmount - authorCut) * 100) / 100;
+
+      await addDoc(collection(db, "sales"), {
+        invoiceCode,
+        bookId: book.id,
+        bookTitle: book.title,
+        authorId: book.authorId || "",
+        authorName: book.authorName || "",
+        qty,
+        unitPrice,
+        discountPct: disc,
+        totalAmount,
+        authorCut,
+        houseCut,
+        copyFormat: format,
+        isFreebie: format === "freebie",
+        warehouseId: format === "digital" ? "" : whId,
+        exhibitionId: exhId,
+        channel,
+        customerName: custName,
+        customerPhone: custPhone,
+        paymentMethod: "نقدي",
+        soldBy: state.userEmail.toLowerCase(),
+        soldByName: state.displayName,
+        timestamp: now,
+        dateISO: new Date(now).toISOString()
+      });
+
+      const newStock = format === "digital" ? Number(book.stock) || 0 : Math.max(0, (Number(book.stock) || 0) - qty);
+      const newPaperSold = format === "paper" ? (Number(book.copiesSold) || 0) + qty : Number(book.copiesSold) || 0;
+      const newDigSold = format === "digital" ? (Number(book.digitalCopiesSold) || 0) + qty : Number(book.digitalCopiesSold) || 0;
+
+      await updateDoc(doc(db, "books", book.id), {
+        stock: newStock,
+        copiesSold: newPaperSold,
+        digitalCopiesSold: newDigSold
+      });
+
+      const invItems = [
+        {
+          title: format === "freebie" ? `${book.title} (إهداء مجاني)` : book.title,
+          qty,
+          unitPrice,
+          lineTotal: totalAmount,
+          isFreebie: format === "freebie"
+        }
+      ];
+
+      if ($("sell-add-gift-check")?.checked) {
+        const giftBookId = $("sell-gift-book-select")?.value;
+        const giftQty = Math.max(1, Number($("sell-gift-qty")?.value) || 1);
+        const giftBook = state.books.find((x) => x.id === giftBookId);
+        if (giftBook) {
+          await addDoc(collection(db, "sales"), {
+            invoiceCode,
+            bookId: giftBook.id,
+            bookTitle: giftBook.title,
+            authorId: giftBook.authorId || "",
+            authorName: giftBook.authorName || "",
+            qty: giftQty,
+            unitPrice: 0,
+            discountPct: 100,
+            totalAmount: 0,
+            authorCut: 0,
+            houseCut: 0,
+            copyFormat: "freebie",
+            isFreebie: true,
+            warehouseId: whId,
+            exhibitionId: exhId,
+            channel: "هدية مرافقة لعملية بيع",
+            customerName: custName,
+            customerPhone: custPhone,
+            paymentMethod: "مجاني",
+            soldBy: state.userEmail.toLowerCase(),
+            soldByName: state.displayName,
+            timestamp: now + 1,
+            dateISO: new Date(now).toISOString()
+          });
+          await updateDoc(doc(db, "books", giftBook.id), {
+            stock: Math.max(0, (Number(giftBook.stock) || 0) - giftQty)
+          });
+          invItems.push({
+            title: `${giftBook.title} (هدية مجانية)`,
+            qty: giftQty,
+            unitPrice: 0,
+            lineTotal: 0,
+            isFreebie: true
+          });
+        }
+      }
+
+      await logActivity("توثيق عملية بيع / إهداء", `الكتاب: ${book.title} | الكمية: ${qty} | الفاتورة: ${invoiceCode}`, {
+        targetView: "view-book-detail",
+        targetEntityId: book.id
+      });
+
+      closeModal("modal-sell");
+      toast("تم توثيق العملية وتحديث المخزون والمحفظة");
+
+      if ($("sell-issue-invoice-check")?.checked) {
+        openCommercialInvoiceModal({
+          invoiceCode,
+          datetimeStr: fmtFullDateTime(now),
+          customerName: custName,
+          customerPhone: custPhone,
+          paymentMethod: "نقدي",
+          channel,
+          discountPct: disc,
+          netTotal: totalAmount,
+          items: invItems
+        });
+      }
+    });
+  });
+
+  $("authors-search-input")?.addEventListener("input", renderAuthorsView);
+  $("btn-top-add-author")?.addEventListener("click", openAuthorFormForNew);
+  $("btn-back-authors-list")?.addEventListener("click", () => navigateTo("view-authors"));
+  $("btn-author-new-contract")?.addEventListener("click", () => openBookFormForNew(state.selectedAuthorId || ""));
+  $("btn-author-new-payout")?.addEventListener("click", () => {
+    if ($("payout-author-select") && state.selectedAuthorId) {
+      $("payout-author-select").value = state.selectedAuthorId;
+      $("payout-author-select").dispatchEvent(new Event("change"));
+    }
+    navigateTo("view-form-payout");
+  });
+  $("btn-author-open-report")?.addEventListener("click", () => {
+    if ($("report-author-id")) $("report-author-id").value = state.selectedAuthorId || "";
+    updateAuthorReportTemplate();
+    navigateTo("view-form-report");
+  });
+  $("btn-author-print-statement")?.addEventListener("click", () => {
+    const a = state.authors.find((x) => x.id === state.selectedAuthorId);
+    if ($("print-custom-main-title")) $("print-custom-main-title").textContent = `دار صفقات كتابية للنشر والتوزيع | كشف حساب المؤلف: أ. ${a?.name || ""}`;
+    window.print();
+  });
+
+  $("btn-copy-author-bank")?.addEventListener("click", () => {
+    const a = state.authors.find((x) => x.id === state.selectedAuthorId);
+    if (!a) return;
+    const txt = `المؤلف: ${a.name}\nالبنك/الطريقة: ${a.bankMethod || ""} - ${a.bankName || ""}\nالمستفيد: ${a.bankHolder || ""}\nالحساب/IBAN: ${a.bankAccount || ""}\nالدولة: ${a.bankCountry || ""}`;
+    navigator.clipboard.writeText(txt);
+    toast("تم نسخ البيانات البنكية للمؤلف");
+  });
+
+  $("btn-alert-author-bank")?.addEventListener("click", async () => {
+    const a = state.authors.find((x) => x.id === state.selectedAuthorId);
+    if (!a) return;
+    await sendSystemNotification({
+      title: "يرجى مراجعة وتحديث بياناتك البنكية",
+      body: "نرجو منك تحديث بيانات الحساب البنكي في بوابتك لتسهيل تحويل مستحقاتك المالية.",
+      targetEmail: a.email,
+      priority: "urgent",
+      linkView: "view-author-portal"
+    });
+    toast("تم إرسال تنبيه للمؤلف لتحديث بياناته البنكية");
+  });
+
+  $("archive-search-input")?.addEventListener("input", renderArchiveView);
+  $$("[data-arch-filter]").forEach((p) => {
+    p.addEventListener("click", () => {
+      state.archFilter = p.dataset.archFilter || "all";
+      $$("[data-arch-filter]").forEach((x) => x.classList.toggle("active", x === p));
+      renderArchiveView();
+    });
+  });
+
+  $("btn-goto-add-warehouse")?.addEventListener("click", () => navigateTo("view-form-warehouse"));
+  $("btn-goto-add-edition")?.addEventListener("click", () => navigateTo("view-form-edition"));
+  $("ed-operation-type")?.addEventListener("change", (e) => {
+    if ($("ed-from-wh-wrap")) $("ed-from-wh-wrap").style.display = e.target.value === "transfer" ? "block" : "none";
+  });
+
+  $("btn-goto-add-library")?.addEventListener("click", () => navigateTo("view-form-library"));
+  $("btn-back-libraries")?.addEventListener("click", () => navigateTo("view-libraries"));
+  $("btn-lib-supply-books")?.addEventListener("click", () => {
+    if ($("supply-lib-id")) $("supply-lib-id").value = state.selectedLibId || "";
+    navigateTo("view-form-lib-supply");
+  });
+  $("btn-lib-settle-sales")?.addEventListener("click", () => {
+    if ($("settle-lib-id")) $("settle-lib-id").value = state.selectedLibId || "";
+    navigateTo("view-form-lib-settle");
+  });
+  $("btn-lib-print-statement")?.addEventListener("click", () => window.print());
+
+  $("btn-goto-add-exhibition")?.addEventListener("click", openExhibitionFormForNew);
+  $("btn-back-exhibitions")?.addEventListener("click", () => navigateTo("view-exhibitions"));
+  $("btn-exh-open-pos")?.addEventListener("click", () => {
+    if ($("pos-exhibition-select") && state.selectedExhId) {
+      $("pos-exhibition-select").value = state.selectedExhId;
+    }
+    navigateTo("view-pos");
+  });
+  $("btn-exh-add-expense")?.addEventListener("click", () => {
+    if ($("expense-scope-select")) $("expense-scope-select").value = "exhibition";
+    if ($("expense-exhibition-picker-wrap")) $("expense-exhibition-picker-wrap").style.display = "block";
+    if ($("expense-exhibition-select") && state.selectedExhId) $("expense-exhibition-select").value = state.selectedExhId;
+    navigateTo("view-form-expense");
+  });
+  $("btn-exh-edit")?.addEventListener("click", () => {
+    const ex = state.exhibitions.find((x) => x.id === state.selectedExhId);
+    if (ex) openExhibitionFormForEdit(ex);
+  });
+  $("btn-exh-print-statement")?.addEventListener("click", () => window.print());
+
+  $("btn-goto-add-contest")?.addEventListener("click", () => navigateTo("view-form-contest"));
+
+  $("btn-top-add-expense")?.addEventListener("click", () => {
+    renderBooksMultiChecklist("expense-books-checklist", "", []);
+    navigateTo("view-form-expense");
+  });
+  $("btn-fin-open-statement-modal")?.addEventListener("click", () => openModal("modal-statement-builder"));
+
+  $$("[data-fin-range]").forEach((p) => {
+    p.addEventListener("click", () => {
+      state.finRange = p.dataset.finRange || "all";
+      state.finFrom = "";
+      state.finTo = "";
+      $$("[data-fin-range]").forEach((x) => x.classList.toggle("active", x === p));
+      renderFinanceView();
+    });
+  });
+  $("btn-apply-fin-dates")?.addEventListener("click", () => {
+    state.finFrom = $("fin-date-from")?.value || "";
+    state.finTo = $("fin-date-to")?.value || "";
+    renderFinanceView();
+  });
+
+  $("btn-apply-log-dates")?.addEventListener("click", () => {
+    state.logFrom = $("log-date-from")?.value || "";
+    state.logTo = $("log-date-to")?.value || "";
+    renderProfileAndLogsView();
+  });
+  $("btn-reset-log-dates")?.addEventListener("click", () => {
+    state.logFrom = "";
+    state.logTo = "";
+    if ($("log-date-from")) $("log-date-from").value = "";
+    if ($("log-date-to")) $("log-date-to").value = "";
+    renderProfileAndLogsView();
+  });
+  $("btn-back-my-logs")?.addEventListener("click", () => {
+    state.viewingStaffLogsEmail = null;
+    if ($("audit-log-title")) $("audit-log-title").innerHTML = `<i class="ri-history-line"></i><span>سجل التدقيق والعمليات الموثقة (بالتاريخ والساعة والدقيقة)</span>`;
+    $("btn-back-my-logs").style.display = "none";
+    renderProfileAndLogsView();
+  });
+
+  $("form-author")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-author"), async () => {
+      const id = $("author-id-field")?.value;
+      const name = ($("author-name-field")?.value || "").trim();
+      const email = ($("author-email-field")?.value || "").trim().toLowerCase();
+      const avatarFile = $("author-avatar-file")?.files?.[0];
+      let avatarUrl = id ? state.authors.find((a) => a.id === id)?.avatarUrl || "" : "";
+      if (avatarFile) avatarUrl = await uploadImageSmart(avatarFile);
+
+      const payload = {
+        name,
+        email,
+        phone: ($("author-phone-field")?.value || "").trim(),
+        bio: ($("author-bio-field")?.value || "").trim(),
+        bankName: ($("author-bank-name-field")?.value || "").trim(),
+        bankAccount: ($("author-bank-acc-field")?.value || "").trim(),
+        bankHolder: ($("author-bank-holder-field")?.value || "").trim(),
+        bankCountry: ($("author-bank-country-field")?.value || "").trim(),
+        restricted: Boolean($("author-restricted-check")?.checked),
+        avatarUrl,
+        timestamp: Date.now()
+      };
+
+      if (id) {
+        await updateDoc(doc(db, "authors", id), payload);
+        await logActivity("تعديل ملف مؤلف", `المؤلف: ${name}`, { targetView: "view-author-detail", targetEntityId: id });
+      } else {
+        const ref = await addDoc(collection(db, "authors"), payload);
+        await logActivity("إضافة مؤلف جديد", `المؤلف: ${name} (${email})`, { targetView: "view-author-detail", targetEntityId: ref.id });
+      }
+      clearDraftByPrefix("author_", true);
+      toast("تم حفظ ملف المؤلف بنجاح");
+      navigateTo("view-authors");
+    });
+  });
+
+  $("book-title-field")?.addEventListener("input", (e) => {
+    const val = (e.target.value || "").trim().toLowerCase();
+    const editId = $("book-id-field")?.value;
+    const dup = state.books.find((b) => b.id !== editId && (b.title || "").trim().toLowerCase() === val);
+    const warn = $("book-dup-warning");
+    if (warn) {
+      warn.classList.toggle("show", Boolean(dup && val.length > 2));
+    }
+  });
+
+  $("form-book")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-book"), async () => {
+      const id = $("book-id-field")?.value;
+      const existing = id ? state.books.find((b) => b.id === id) : null;
+      const authorId = $("book-author-select")?.value || "";
+      const authorObj = state.authors.find((a) => a.id === authorId);
+
+      let coverUrl = existing?.coverUrl || "";
+      let backCoverUrl = existing?.backCoverUrl || "";
+      let spreadCoverUrl = existing?.spreadCoverUrl || "";
+
+      const f1 = $("book-cover-file")?.files?.[0];
+      const f2 = $("book-back-cover-file")?.files?.[0];
+      const f3 = $("book-spread-cover-file")?.files?.[0];
+
+      if (f1) coverUrl = await uploadImageSmart(f1);
+      if (f2) backCoverUrl = await uploadImageSmart(f2);
+      if (f3) spreadCoverUrl = await uploadImageSmart(f3);
+
+      const stockVal = Number($("book-stock-field")?.value) || 0;
+      const payload = {
+        title: ($("book-title-field")?.value || "").trim(),
+        authorId,
+        authorName: authorObj?.name || existing?.authorName || "",
+        price: Number($("book-price-field")?.value) || 0,
+        digitalPrice: Number($("book-digital-price-field")?.value) || Number($("book-price-field")?.value) || 0,
+        royaltyRate: Number($("book-royalty-field")?.value) || 0,
+        contractMonths: Number($("book-months-field")?.value) || 24,
+        contractDate: $("book-date-field")?.value || todayISO(),
+        favorite: Boolean($("book-fav-check")?.checked),
+        stock: stockVal,
+        printedTotal: existing ? Math.max(Number(existing.printedTotal) || 0, stockVal) : stockVal,
+        warehouseId: $("book-warehouse-select")?.value || "main_warehouse",
+        editionLabel: ($("book-edition-field")?.value || "").trim(),
+        isbn: ($("book-isbn-field")?.value || "").trim(),
+        category: ($("book-cat-field")?.value || "").trim(),
+        coverUrl,
+        backCoverUrl,
+        spreadCoverUrl,
+        driveUrl: ($("book-drive-field")?.value || "").trim(),
+        printDriveUrl: ($("book-print-drive-field")?.value || "").trim(),
+        authorAccessLevel: $("book-author-access-select")?.value || "full_download",
+        notes: ($("book-notes-field")?.value || "").trim(),
+        timestamp: existing?.timestamp || Date.now()
+      };
+
+      if (id) {
+        await updateDoc(doc(db, "books", id), payload);
+        await logActivity("تعديل عقد وبيانات كتاب", `الكتاب: ${payload.title}`, { targetView: "view-book-detail", targetEntityId: id });
+      } else {
+        const ref = await addDoc(collection(db, "books"), { ...payload, copiesSold: 0, digitalCopiesSold: 0, contractStatus: "active" });
+        await logActivity("توثيق عقد كتاب جديد", `الكتاب: ${payload.title} | المؤلف: ${payload.authorName}`, { targetView: "view-book-detail", targetEntityId: ref.id });
+      }
+      clearDraftByPrefix("book_", true);
+      toast("تم حفظ الكتاب والعقد والأرشيف بنجاح");
+      navigateTo("view-contracts");
+    });
+  });
+
+  $("form-warehouse")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-warehouse"), async () => {
+      const name = ($("wh-name-field")?.value || "").trim();
+      const location = ($("wh-location-field")?.value || "").trim();
+      await addDoc(collection(db, "warehouses"), { name, location, timestamp: Date.now() });
+      await logActivity("إضافة مستودع فرعي", `المستودع: ${name}`, { targetView: "view-warehouses" });
+      clearDraftByPrefix("wh_", true);
+      toast("تم إضافة المستودع بنجاح");
+      navigateTo("view-warehouses");
+    });
+  });
+
+  $("form-edition")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-edition"), async () => {
+      const opType = $("ed-operation-type")?.value || "new_edition";
+      const bookId = $("ed-book-select")?.value;
+      const book = state.books.find((b) => b.id === bookId);
+      if (!book) return;
+      const qty = Math.max(1, Number($("ed-qty-field")?.value) || 1);
+      const title = ($("ed-title-field")?.value || "").trim() || (opType === "transfer" ? "نقل مخزون بين المستودعات" : "طبعة جديدة");
+
+      await addDoc(collection(db, "editions"), {
+        operationType: opType,
+        bookId: book.id,
+        bookTitle: book.title,
+        qty,
+        fromWarehouseId: $("ed-from-wh-select")?.value || "",
+        toWarehouseId: $("ed-to-wh-select")?.value || "main_warehouse",
+        title,
+        timestamp: Date.now()
+      });
+
+      if (opType === "new_edition") {
+        await updateDoc(doc(db, "books", book.id), {
+          stock: (Number(book.stock) || 0) + qty,
+          printedTotal: (Number(book.printedTotal || book.stock) || 0) + qty
+        });
+      }
+
+      await logActivity("حركة طبعات / مخزون", `الكتاب: ${book.title} | الكمية: ${qty} | ${title}`, { targetView: "view-warehouses" });
+      toast("تم تحديث المخزون وتوثيق العملية");
+      navigateTo("view-warehouses");
+    });
+  });
+
+  $("form-contest")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-contest"), async () => {
+      const contestType = $("contest-type-select")?.value || "contest_prize";
+      const title = ($("contest-title-field")?.value || "").trim();
+      const bookId = $("contest-book-select")?.value;
+      const book = state.books.find((b) => b.id === bookId);
+      if (!book) return;
+
+      const qty = Math.max(1, Number($("contest-qty-field")?.value) || 1);
+      if ((Number(book.stock) || 0) < qty) {
+        toast(`المخزون الورقي للكتاب غير كافٍ! المتوفر: ${book.stock || 0}`, "ri-error-warning-line");
+        return;
+      }
+
+      const winnerName = ($("contest-winner-field")?.value || "").trim() || "فائز / إهداء";
+      const notes = ($("contest-notes-field")?.value || "").trim();
+
+      await addDoc(collection(db, "editions"), {
+        operationType: "free_contest",
+        contestType,
+        title,
+        bookId: book.id,
+        bookTitle: book.title,
+        qty,
+        toWarehouseId: $("contest-wh-select")?.value || "main_warehouse",
+        winnerName,
+        notes,
+        timestamp: Date.now()
+      });
+
+      await updateDoc(doc(db, "books", book.id), {
+        stock: Math.max(0, (Number(book.stock) || 0) - qty)
+      });
+
+      await logActivity("صرف مسابقة / إهداء مجاني", `${title} | الكتاب: ${book.title} (${qty} نسخة) | الفائز/الجهة: ${winnerName}`, {
+        targetView: "view-contests"
+      });
+      $("form-contest")?.reset();
+      toast("تم اعتماد الصرف المجاني وخصمه من المخزون دون احتساب مالي على الدار");
+      navigateTo("view-contests");
+    });
+  });
+
+  $("form-library")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-library"), async () => {
+      const name = ($("lib-name-field")?.value || "").trim();
+      await addDoc(collection(db, "libraries"), {
+        name,
+        city: ($("lib-city-field")?.value || "").trim(),
+        phone: ($("lib-phone-field")?.value || "").trim(),
+        discount: Number($("lib-discount-field")?.value) || 30,
+        notes: ($("lib-notes-field")?.value || "").trim(),
+        timestamp: Date.now()
+      });
+      await logActivity("إضافة مكتبة / موزع", `المكتبة: ${name}`, { targetView: "view-libraries" });
+      clearDraftByPrefix("lib_", true);
+      toast("تم حفظ ملف المكتبة");
+      navigateTo("view-libraries");
+    });
+  });
+
+  $("form-lib-supply")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-supply"), async () => {
+      const libId = $("supply-lib-id")?.value || state.selectedLibId;
+      const lib = state.libraries.find((l) => l.id === libId);
+      const bookId = $("supply-book-select")?.value;
+      const book = state.books.find((b) => b.id === bookId);
+      if (!lib || !book) return;
+      const qty = Math.max(1, Number($("supply-qty-field")?.value) || 1);
+      if ((Number(book.stock) || 0) < qty) {
+        toast("الرصيد في المستودع غير كافٍ للتوريد!", "ri-error-warning-line");
+        return;
+      }
+
+      await addDoc(collection(db, "library_transactions"), {
+        txType: "supply",
+        libId: lib.id,
+        libName: lib.name,
+        bookId: book.id,
+        bookTitle: book.title,
+        qty,
+        amount: 0,
+        notes: ($("supply-notes-field")?.value || "").trim(),
+        timestamp: Date.now()
+      });
+
+      await updateDoc(doc(db, "books", book.id), {
+        stock: Math.max(0, (Number(book.stock) || 0) - qty)
+      });
+
+      await logActivity("توريد شحنة لمكتبة", `المكتبة: ${lib.name} | الكتاب: ${book.title} (${qty} نسخة)`, {
+        targetView: "view-library-detail",
+        targetEntityId: lib.id
+      });
+      toast("تم توثيق التوريد وخصم الكمية من المستودع");
+      openLibraryDetail(lib.id);
+    });
+  });
+
+  $("form-lib-settle")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-settle"), async () => {
+      const libId = $("settle-lib-id")?.value || state.selectedLibId;
+      const lib = state.libraries.find((l) => l.id === libId);
+      const bookId = $("settle-book-select")?.value;
+      const book = state.books.find((b) => b.id === bookId);
+      if (!lib || !book) return;
+
+      const qty = Math.max(1, Number($("settle-qty-field")?.value) || 1);
+      const amount = Number($("settle-amount-field")?.value) || 0;
+      const authorCut = Math.round(amount * ((Number(book.royaltyRate) || 0) / 100) * 100) / 100;
+      const houseCut = Math.round((amount - authorCut) * 100) / 100;
+      const now = Date.now();
+
+      await addDoc(collection(db, "library_transactions"), {
+        txType: "settle",
+        libId: lib.id,
+        libName: lib.name,
+        bookId: book.id,
+        bookTitle: book.title,
+        qty,
+        amount,
+        notes: ($("settle-notes-field")?.value || "").trim(),
+        timestamp: now
+      });
+
+      await addDoc(collection(db, "sales"), {
+        invoiceCode: `#LIB-${Math.floor(1000 + Math.random() * 9000)}`,
+        bookId: book.id,
+        bookTitle: book.title,
+        authorId: book.authorId || "",
+        authorName: book.authorName || "",
+        qty,
+        unitPrice: qty > 0 ? Math.round((amount / qty) * 100) / 100 : 0,
+        discountPct: lib.discount || 0,
+        totalAmount: amount,
+        authorCut,
+        houseCut,
+        copyFormat: "paper",
+        isFreebie: false,
+        channel: `تصفية مكتبة: ${lib.name}`,
+        customerName: lib.name,
+        soldBy: state.userEmail.toLowerCase(),
+        soldByName: state.displayName,
+        timestamp: now,
+        dateISO: new Date(now).toISOString()
+      });
+
+      await updateDoc(doc(db, "books", book.id), {
+        copiesSold: (Number(book.copiesSold) || 0) + qty
+      });
+
+      await logActivity("تصفية وتحصيل مبيعات مكتبة", `المكتبة: ${lib.name} | الكتاب: ${book.title} (${qty} نسخة) | المحصل: ${fmtMoney(amount)}`, {
+        targetView: "view-library-detail",
+        targetEntityId: lib.id
+      });
+      toast("تم اعتماد التحصيل وإيداع الأرباح في المحفظة");
+      openLibraryDetail(lib.id);
+    });
+  });
+
+  $("btn-exh-select-all-books")?.addEventListener("click", () => {
+    $$("#exh-books-checklist input[type='checkbox']").forEach((c) => (c.checked = true));
+  });
+  $("btn-exh-clear-all-books")?.addEventListener("click", () => {
+    $$("#exh-books-checklist input[type='checkbox']").forEach((c) => (c.checked = false));
+  });
+  $("exh-books-filter-input")?.addEventListener("input", (e) => {
+    const currentlyChecked = $$("#exh-books-checklist input[type='checkbox']:checked").map((c) => c.value);
+    renderBooksMultiChecklist("exh-books-checklist", e.target.value, currentlyChecked);
+  });
+
+  $("form-exhibition")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-exhibition"), async () => {
+      const id = $("exh-id-field")?.value;
+      const existing = id ? state.exhibitions.find((x) => x.id === id) : null;
+      const checkedBooks = $$("#exh-books-checklist input[type='checkbox']:checked").map((c) => c.value);
+
+      const photoFiles = Array.from($("exh-photos-files")?.files || []);
+      const uploadedPhotos = existing?.photoUrls ? [...existing.photoUrls] : [];
+      for (const file of photoFiles.slice(0, 5)) {
+        const url = await uploadImageSmart(file);
+        if (url) uploadedPhotos.push(url);
+      }
+
+      const payload = {
+        name: ($("exh-name-field")?.value || "").trim(),
+        location: ($("exh-location-field")?.value || "").trim(),
+        prepDate: $("exh-prep-date")?.value || "",
+        startDate: $("exh-start-date")?.value || "",
+        endDate: $("exh-end-date")?.value || "",
+        budget: Number($("exh-budget-field")?.value) || 0,
+        notes: ($("exh-notes-field")?.value || "").trim(),
+        bookIds: checkedBooks,
+        photoUrls: uploadedPhotos,
+        timestamp: existing?.timestamp || Date.now()
+      };
+
+      if (id) {
+        await updateDoc(doc(db, "exhibitions", id), payload);
+        await logActivity("تعديل معرض وكتبه المشاركة", `المعرض: ${payload.name}`, { targetView: "view-exhibition-detail", targetEntityId: id });
+      } else {
+        const ref = await addDoc(collection(db, "exhibitions"), payload);
+        await logActivity("إنشاء معرض جديد", `المعرض: ${payload.name} (${checkedBooks.length} كتاب مشارك)`, {
+          targetView: "view-exhibition-detail",
+          targetEntityId: ref.id
+        });
+      }
+      clearDraftByPrefix("exh_", true);
+      toast("تم حفظ المعرض والكتب المشاركة والصور");
+      navigateTo("view-exhibitions");
+    });
+  });
+
+  $("expense-scope-select")?.addEventListener("change", (e) => {
+    const val = e.target.value;
+    if ($("expense-books-picker-wrap")) $("expense-books-picker-wrap").style.display = val === "books" ? "block" : "none";
+    if ($("expense-exhibition-picker-wrap")) $("expense-exhibition-picker-wrap").style.display = val === "exhibition" ? "block" : "none";
+  });
+
+  $("form-expense")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-expense"), async () => {
+      const scope = $("expense-scope-select")?.value || "general";
+      const selectedBooks = scope === "books" ? $$("#expense-books-checklist input[type='checkbox']:checked").map((c) => c.value) : [];
+      const exhId = scope === "exhibition" ? $("expense-exhibition-select")?.value || "" : "";
+      const title = ($("expense-title-field")?.value || "").trim();
+      const amount = Number($("expense-amount-field")?.value) || 0;
+
+      await addDoc(collection(db, "expenses"), {
+        title,
+        amount,
+        category: $("expense-cat-field")?.value || "عام",
+        scope,
+        bookIds: selectedBooks,
+        bookId: selectedBooks.length === 1 ? selectedBooks[0] : "",
+        exhibitionId: exhId,
+        timestamp: Date.now()
+      });
+
+      await logActivity("تسجيل مصروف تشغيلي", `${title} — المبلغ: ${fmtMoney(amount)}`, { targetView: "view-finance" });
+      clearDraftByPrefix("exp_", true);
+      toast("تم توثيق المصروف وخصمه من المحفظة");
+      navigateTo("view-finance");
+    });
+  });
+
+  $("payout-author-select")?.addEventListener("change", (e) => {
+    const a = state.authors.find((x) => x.id === e.target.value);
+    const box = $("payout-author-bank-preview");
+    if (!box) return;
+    if (!a) {
+      box.innerHTML = "اختر المؤلف لعرض بيانات حسابه البنكي ورصيده المتاح...";
+      return;
+    }
+    const fin = computeAuthorFinancials(a.id);
+    box.innerHTML = `
+      <div><strong>الرصيد المستحق للمؤلف حالياً:</strong> <span class="money-pos">${fmtMoney(fin.balance)}</span></div>
+      <div><strong>البنك / الطريقة المفضلة:</strong> ${esc(a.bankMethod || "")} — ${esc(a.bankName || "غير محدد")} | <strong>الحساب:</strong> <span dir="ltr">${esc(a.bankAccount || "—")}</span></div>
+    `;
+  });
+
+  $("form-payout")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-payout"), async () => {
+      const authorId = $("payout-author-select")?.value;
+      const author = state.authors.find((a) => a.id === authorId);
+      if (!author) return;
+      const amount = Number($("payout-amount-field")?.value) || 0;
+      const method = ($("payout-method-field")?.value || "").trim();
+      const file = $("payout-receipt-file")?.files?.[0];
+      const receiptUrl = file ? await uploadImageSmart(file) : "";
+
+      await addDoc(collection(db, "payouts"), {
+        authorId: author.id,
+        authorName: author.name,
+        amount,
+        method,
+        receiptUrl,
+        notes: ($("payout-notes-field")?.value || "").trim(),
+        paidBy: state.userEmail.toLowerCase(),
+        timestamp: Date.now()
+      });
+
+      await sendSystemNotification({
+        title: `تم تحويل دفعة مالية لحسابك (${fmtMoney(amount)})`,
+        body: `تم إيداع حوالتك عبر (${method}). يمكنك استعراض الإيصال من بوابتك.`,
+        targetEmail: author.email,
+        priority: "normal",
+        linkView: "view-author-portal"
+      });
+
+      await logActivity("تسديد حوالة لمؤلف", `المؤلف: ${author.name} | المبلغ: ${fmtMoney(amount)} عبر ${method}`, {
+        targetView: "view-author-detail",
+        targetEntityId: author.id
+      });
+      clearDraftByPrefix("payout_", true);
+      toast("تم اعتماد الدفعة وإشعار المؤلف");
+      openAuthorDetail(author.id);
+    });
+  });
+
+  $("btn-top-add-staff")?.addEventListener("click", () => {
+    if ($("form-staff-title")) $("form-staff-title").textContent = "إضافة موظف وتخصيص صلاحياته";
+    if ($("staff-id-field")) $("staff-id-field").value = "";
+    $("form-staff")?.reset();
+    navigateTo("view-form-staff");
+  });
+  $("btn-staff-all-perms")?.addEventListener("click", () => {
+    ["perm-pos", "perm-sell", "perm-add-book", "perm-delete-book", "perm-authors", "perm-payouts", "perm-expenses", "perm-finance-view", "perm-reports"].forEach((id) => {
+      if ($(id)) $(id).checked = true;
+    });
+  });
+  $("btn-staff-pos-only")?.addEventListener("click", () => {
+    ["perm-sell", "perm-add-book", "perm-delete-book", "perm-authors", "perm-payouts", "perm-expenses", "perm-finance-view", "perm-reports"].forEach((id) => {
+      if ($(id)) $(id).checked = false;
+    });
+    if ($("perm-pos")) $("perm-pos").checked = true;
+    if ($("staff-job-field")) $("staff-job-field").value = "موظف كاشير ونقطة بيع (POS)";
+  });
+  $("btn-staff-sell-only")?.addEventListener("click", () => {
+    ["perm-add-book", "perm-delete-book", "perm-authors", "perm-payouts", "perm-expenses", "perm-finance-view"].forEach((id) => {
+      if ($(id)) $(id).checked = false;
+    });
+    if ($("perm-pos")) $("perm-pos").checked = true;
+    if ($("perm-sell")) $("perm-sell").checked = true;
+    if ($("perm-reports")) $("perm-reports").checked = true;
+  });
+
+  $("form-staff")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-staff"), async () => {
+      const id = $("staff-id-field")?.value;
+      const payload = {
+        name: ($("staff-name-field")?.value || "").trim(),
+        email: ($("staff-email-field")?.value || "").trim().toLowerCase(),
+        jobTitle: ($("staff-job-field")?.value || "").trim(),
+        restricted: Boolean($("staff-restricted-check")?.checked),
+        permissions: {
+          pos: Boolean($("perm-pos")?.checked),
+          sell: Boolean($("perm-sell")?.checked),
+          addBook: Boolean($("perm-add-book")?.checked),
+          deleteBook: Boolean($("perm-delete-book")?.checked),
+          authors: Boolean($("perm-authors")?.checked),
+          payouts: Boolean($("perm-payouts")?.checked),
+          expenses: Boolean($("perm-expenses")?.checked),
+          financeView: Boolean($("perm-finance-view")?.checked),
+          reports: Boolean($("perm-reports")?.checked)
+        },
+        timestamp: Date.now()
+      };
+      if (id) await updateDoc(doc(db, "staff", id), payload);
+      else await addDoc(collection(db, "staff"), payload);
+      await logActivity("حفظ صلاحيات موظف", `الموظف: ${payload.name} (${payload.email})`, { targetView: "view-staff" });
+      toast("تم حفظ حساب وصلاحيات الموظف");
+      navigateTo("view-staff");
+    });
+  });
+
+  $("btn-staff-send-notif")?.addEventListener("click", () => navigateTo("view-form-notif"));
+  $("btn-notif-new")?.addEventListener("click", () => navigateTo("view-form-notif"));
+  $("form-notif")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-submit-notif"), async () => {
+      await sendSystemNotification({
+        title: ($("notif-title-field")?.value || "").trim(),
+        body: ($("notif-body-field")?.value || "").trim(),
+        targetEmail: $("notif-target-select")?.value || "all_admins",
+        priority: $("notif-priority-select")?.value || "normal",
+        linkView: $("notif-link-view-select")?.value || "view-dashboard"
+      });
+      $("form-notif")?.reset();
+      toast("تم إرسال التنبيه التفاعلي بنجاح");
+      navigateTo("view-notifications");
+    });
+  });
+
+  $("report-type-select")?.addEventListener("change", updateAuthorReportTemplate);
+  $("btn-copy-report")?.addEventListener("click", () => {
+    navigator.clipboard.writeText($("report-text-area")?.value || "");
+    toast("تم نسخ نص الرسالة");
+  });
+  $("btn-whatsapp-report")?.addEventListener("click", () => {
+    const a = state.authors.find((x) => x.id === ($("report-author-id")?.value || state.selectedAuthorId));
+    const phone = sanitizePhoneForWa(a?.phone || "");
+    const txt = $("report-text-area")?.value || "";
+    window.open(phone ? `https://wa.me/${phone}?text=${encodeURIComponent(txt)}` : `https://wa.me/?text=${encodeURIComponent(txt)}`, "_blank");
+  });
+  $("btn-mailto-report")?.addEventListener("click", () => {
+    const a = state.authors.find((x) => x.id === ($("report-author-id")?.value || state.selectedAuthorId));
+    const txt = $("report-text-area")?.value || "";
+    window.location.href = `mailto:${a?.email || ""}?subject=${encodeURIComponent("دار صفقات كتابية للنشر والتوزيع")}&body=${encodeURIComponent(txt)}`;
+  });
+
+  $("form-profile-update")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-save-profile"), async () => {
+      const newName = ($("profile-name-input")?.value || "").trim();
+      const file = $("profile-avatar-file")?.files?.[0];
+      let avatarUrl = state.avatarUrl || "";
+      if (file) avatarUrl = await uploadImageSmart(file);
+
+      await setDoc(
+        doc(db, "user_profiles", state.userEmail),
+        {
+          displayName: newName,
+          avatarUrl,
+          updatedAt: Date.now()
+        },
+        { merge: true }
+      );
+
+      state.displayName = newName;
+      state.avatarUrl = avatarUrl;
+      renderHeaderIdentity();
+      await logActivity("تحديث الملف الشخصي والصورة", `الاسم: ${newName}`, { targetView: "view-profile" });
+      toast("تم حفظ الاسم والصورة الشخصية بنجاح");
+    });
+  });
+
+  $("btn-portal-request-name")?.addEventListener("click", (e) =>
+    withButtonLock(e.currentTarget, async () => {
+      const reqName = ($("portal-req-name-input")?.value || "").trim();
+      if (!reqName || !state.authorDoc) {
+        toast("يرجى كتابة الاسم الجديد المطلوب أولاً", "ri-error-warning-line");
+        return;
+      }
+      await updateDoc(doc(db, "authors", state.authorDoc.id), { pendingNameRequest: reqName });
+      await sendSystemNotification({
+        title: `طلب تعديل اسم مؤلف: ${state.authorDoc.name}`,
+        body: `يرغب المؤلف بتعديل اسمه إلى «${reqName}». اضغط على هذا الإشعار للانتقال لملف المؤلف والموافقة أو الرفض.`,
+        targetEmail: "all_admins",
+        priority: "urgent",
+        linkView: "view-author-detail",
+        linkEntityId: state.authorDoc.id
+      });
+      if ($("portal-req-name-input")) $("portal-req-name-input").value = "";
+      toast("تم إرسال طلب تعديل الاسم إلى الإدارة للمراجعة والموافقة");
+    })
+  );
+
+  $("form-portal-bank")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withButtonLock($("btn-save-portal-bank"), async () => {
+      if (!state.authorDoc) return;
+      const file = $("portal-avatar-file")?.files?.[0];
+      let avatarUrl = state.authorDoc.avatarUrl || "";
+      if (file) avatarUrl = await uploadImageSmart(file);
+
+      await updateDoc(doc(db, "authors", state.authorDoc.id), {
+        bankMethod: ($("portal-bank-method")?.value || "").trim(),
+        bankName: ($("portal-bank-name")?.value || "").trim(),
+        bankHolder: ($("portal-bank-holder")?.value || "").trim(),
+        bankAccount: ($("portal-bank-account")?.value || "").trim(),
+        bankCountry: ($("portal-bank-country")?.value || "").trim(),
+        bankNotes: ($("portal-bank-notes")?.value || "").trim(),
+        avatarUrl
+      });
+      state.avatarUrl = avatarUrl;
+      toast("تم حفظ صورتك الشخصية وبياناتك البنكية بنجاح");
+    });
+  });
+
+  $("btn-portal-print-all")?.addEventListener("click", () => {
+    if ($("print-custom-main-title")) $("print-custom-main-title").textContent = `دار صفقات كتابية للنشر والتوزيع | كشف حساب المؤلف: ${state.displayName}`;
+    window.print();
+  });
+  $("btn-back-to-author-portal")?.addEventListener("click", () => navigateTo("view-author-portal"));
+  $("btn-portal-book-print-statement")?.addEventListener("click", () => {
+    const b = state.books.find((x) => x.id === state.portalSelectedBookId);
+    if ($("print-custom-main-title")) $("print-custom-main-title").textContent = `دار صفقات كتابية للنشر والتوزيع | كشف حساب كتاب: ${b?.title || ""}`;
+    window.print();
+  });
+
+  $("btn-close-pdf-view")?.addEventListener("click", () => {
+    if ($("pdf-iframe")) $("pdf-iframe").src = "";
+    navigateTo(state.prevView || "view-dashboard");
+  });
+
+  ["calc-book-select", "calc-copy-type", "calc-book-qty", "calc-book-disc"].forEach((id) => {
+    $(id)?.addEventListener("input", updateCalculatorBreakdown);
+    $(id)?.addEventListener("change", updateCalculatorBreakdown);
+  });
+  $$(".calc-key").forEach((key) => {
+    key.addEventListener("click", () => {
+      const screen = $("calc-screen");
+      if (!screen) return;
+      const k = key.dataset.calc;
+      if (k === "C") screen.value = "0";
+      else if (k === "=") {
+        try {
+          screen.value = String(Function(`"use strict"; return (${screen.value})`)());
+        } catch (e) {
+          screen.value = "Error";
+        }
+      } else {
+        screen.value = screen.value === "0" || screen.value === "Error" ? k : screen.value + k;
+      }
+    });
+  });
+
+  $("stmt-type-select")?.addEventListener("change", (e) => {
+    const v = e.target.value;
+    if ($("stmt-author-pick-wrap")) $("stmt-author-pick-wrap").style.display = v === "author_statement" ? "block" : "none";
+    if ($("stmt-book-pick-wrap")) $("stmt-book-pick-wrap").style.display = v === "book_statement" ? "block" : "none";
+    if ($("stmt-exh-pick-wrap")) $("stmt-exh-pick-wrap").style.display = v === "exhibition_statement" ? "block" : "none";
+  });
+
+  $("btn-stmt-execute-print")?.addEventListener("click", () => {
+    const type = $("stmt-type-select")?.value || "current_view";
+    const customTitle = ($("stmt-custom-title")?.value || "").trim();
+    closeModal("modal-statement-builder");
+
+    if (type === "author_statement") {
+      const aId = $("stmt-author-select")?.value;
+      if (aId) openAuthorDetail(aId);
+    } else if (type === "book_statement") {
+      const bId = $("stmt-book-select")?.value;
+      if (bId) openBookDetail(bId);
+    } else if (type === "exhibition_statement") {
+      const xId = $("stmt-exh-select")?.value;
+      if (xId) openExhibitionDetail(xId);
+    } else if (type === "house_full") {
+      navigateTo("view-finance");
+    }
+
+    if ($("print-custom-main-title")) {
+      $("print-custom-main-title").textContent = customTitle || "دار صفقات كتابية للنشر والتوزيع | كشف حساب وتقرير رسمي معتمد";
+    }
+    setTimeout(() => window.print(), 350);
+  });
+
+  document.addEventListener("open-exh", (ev) => {
+    if (ev.detail) openExhibitionDetail(ev.detail);
+  });
+}
+
+// ==========================================================================
+// 27. نقطة الإقلاع الذكي الفوري (تحل مشكلة تأخر DOMContentLoaded في الجوال نهائياً)
+// ==========================================================================
+function bootstrapSafaqatApp() {
+  if (window.__safaqatBootstrapped) return;
+  window.__safaqatBootstrapped = true;
+  try {
+    initDraftSystem();
+    bindAllEvents();
+    initAuthAndBoot();
+  } catch (err) {
+    console.error("Bootstrap Error:", err);
+    forceHideBootScreen(true);
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootstrapSafaqatApp);
+} else {
+  bootstrapSafaqatApp();
 }
